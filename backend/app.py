@@ -237,11 +237,13 @@ def convertir_a_formato_base(df_envista):
         return pd.DataFrame()
 
 
-def validar_rangos(df):
+def validar_rangos(df, rangos_config=None):
     """Validar datos por rangos establecidos"""
+    if rangos_config is None:
+        rangos_config = RANGOS
     df_validado = df.copy()
-    
-    for parametro, config in RANGOS.items():
+
+    for parametro, config in rangos_config.items():
         if parametro in df_validado.columns:
             valores_num = pd.to_numeric(df_validado[parametro], errors='coerce')
             mask_numerico = valores_num.notna()
@@ -263,15 +265,15 @@ def validar_rangos(df):
     return df_validado
 
 
-def validar_temperatura_interna(df):
-    """Validar por temperatura interna de cabina (20-30°C)"""
+def validar_temperatura_interna(df, temp_min=20, temp_max=30):
+    """Validar por temperatura interna de cabina"""
     if 'IT' not in df.columns:
         return df
-    
+
     df_validado = df.copy()
     temp_interna = pd.to_numeric(df_validado['IT'], errors='coerce')
-    
-    mask_temp_invalida = (temp_interna < 20) | (temp_interna > 30)
+
+    mask_temp_invalida = (temp_interna < temp_min) | (temp_interna > temp_max)
     
     contaminantes = ['O3', 'NOX', 'NO', 'NO2', 'PM10', 'PM2.5', 'SO2', 'CO']
     
@@ -365,11 +367,25 @@ def aplicar_decimales(df):
     return df_formateado
 
 
-def validar_datos_completo(df):
-    """Ejecutar todas las validaciones"""
-    df_validado = validar_rangos(df)
-    df_validado = validar_temperatura_interna(df_validado)
-    df_validado = validar_series_temporales(df_validado)
+def validar_datos_completo(df, config=None):
+    """Ejecutar validaciones según configuración"""
+    if config is None:
+        config = {}
+
+    df_validado = df.copy()
+
+    if config.get('rangos', True):
+        rangos_custom = config.get('rangos_custom', None)
+        df_validado = validar_rangos(df_validado, rangos_custom)
+
+    if config.get('temperatura', True):
+        temp_min = float(config.get('temp_min', 20))
+        temp_max = float(config.get('temp_max', 30))
+        df_validado = validar_temperatura_interna(df_validado, temp_min, temp_max)
+
+    if config.get('series', True):
+        df_validado = validar_series_temporales(df_validado)
+
     return df_validado
 
 
@@ -565,8 +581,9 @@ def validate_full():
         if len(df_convertido) == 0:
             return jsonify({'error': 'No se pudieron convertir los datos'}), 400
         
-        # 3. Aplicar TODAS las validaciones
-        df_validado = validar_datos_completo(df_convertido)
+        # 3. Aplicar validaciones según config recibida
+        config_validacion = data.get('config', None)
+        df_validado = validar_datos_completo(df_convertido, config_validacion)
         
         # 4. Crear resúmenes
         resumen_banderas, resumen_detallado, estadisticas, stats_detalladas = crear_resumen_validacion(df_validado)
@@ -615,6 +632,50 @@ def download_file(filename):
         download_name=filename,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
+
+
+@app.route('/api/preview-validated', methods=['POST'])
+def preview_validated():
+    """Cargar un archivo Excel ya validado (con hoja Datos_Validados)"""
+    data = request.get_json()
+
+    if not data or 'filename' not in data:
+        return jsonify({'error': 'Se requiere el nombre del archivo'}), 400
+
+    filename = data['filename']
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'Archivo no encontrado'}), 404
+
+    try:
+        df = pd.read_excel(filepath, sheet_name='Datos_Validados')
+
+        if df is None or len(df) == 0:
+            return jsonify({'error': 'No se encontraron datos en la hoja Datos_Validados'}), 400
+
+        resumen_banderas, _, estadisticas, stats_detalladas = crear_resumen_validacion(df)
+
+        df_json = df.fillna('').to_dict(orient='records')
+
+        return jsonify({
+            'success': True,
+            'message': 'Archivo validado cargado correctamente',
+            'output_filename': filename,
+            'summary': {
+                'total_registros': len(df),
+                'estaciones': int(df['STATION'].nunique()) if 'STATION' in df.columns else 0,
+                'fecha_inicio': str(df['DATE'].min()) if 'DATE' in df.columns else '',
+                'fecha_fin': str(df['DATE'].max()) if 'DATE' in df.columns else '',
+                'banderas': resumen_banderas.to_dict() if not resumen_banderas.empty else {},
+                'estadisticas': estadisticas.to_dict() if not estadisticas.empty else {}
+            },
+            'data_preview': df_json,
+            'estadisticas_detalladas': stats_detalladas.to_dict(orient='records') if not stats_detalladas.empty else []
+        })
+
+    except Exception as e:
+        return jsonify({'error': f'Error al leer archivo validado: {str(e)}'}), 500
 
 
 if __name__ == '__main__':

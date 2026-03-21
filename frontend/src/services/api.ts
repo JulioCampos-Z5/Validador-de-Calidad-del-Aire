@@ -115,8 +115,13 @@ export const apiService = {
     return response.data;
   },
 
-  validateFull: async (filename: string): Promise<ValidationResponse> => {
-    const response = await api.post('/validate/full', { filename });
+  validateFull: async (filename: string, config?: Record<string, any>): Promise<ValidationResponse> => {
+    const response = await api.post('/validate/full', { filename, config });
+    return response.data;
+  },
+
+  previewValidated: async (filename: string): Promise<ValidationResponse> => {
+    const response = await api.post('/preview-validated', { filename });
     return response.data;
   },
 

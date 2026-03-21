@@ -1,10 +1,9 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
-  LayoutDashboard, 
-  Upload, 
-  FileCheck, 
-  Settings, 
+  LayoutDashboard,
+  Upload,
+  Settings,
   Wind,
   Menu,
   X,

@@ -12,6 +12,7 @@ import {
   ErrorBar,
   Cell,
 } from 'recharts';
+import Plot from 'react-plotly.js';
 
 interface DataPoint {
   STATION: string;
@@ -67,7 +68,7 @@ const STATION_COLORS: Record<string, string> = {
 };
 
 const StatCharts = ({ data }: StatChartsProps) => {
-  const [showBoxPlot, setShowBoxPlot] = useState<boolean>(false);
+  const [showBoxPlot, setShowBoxPlot] = useState<boolean>(false); // false = Desviación, true = Violín
   const [selectedParam, setSelectedParam] = useState<string>('O3');
   const [paramType, setParamType] = useState<'contaminantes' | 'meteorologicos'>('contaminantes');
 
@@ -144,36 +145,26 @@ const StatCharts = ({ data }: StatChartsProps) => {
     }).filter(s => s.count > 0);
   }, [data, selectedParam, stations]);
 
-  // Datos para Box Plot (simulado con barras)
-  const boxPlotData = useMemo(() => {
-    return statsData.map((stat) => ({
-      station: stat.station,
-      // Rango inferior (min a q1)
-      rangoInferior: stat.q1 - stat.min,
-      // Caja inferior (q1 a mediana)
-      cajaInferior: stat.mediana - stat.q1,
-      // Base para apilado
-      base: stat.min,
-      // Caja superior (mediana a q3)
-      cajaSuperior: stat.q3 - stat.mediana,
-      // Rango superior (q3 a max)
-      rangoSuperior: stat.max - stat.q3,
-      // Valores originales para tooltip
-      min: stat.min,
-      q1: stat.q1,
-      mediana: stat.mediana,
-      q3: stat.q3,
-      max: stat.max,
-      promedio: stat.promedio,
-    }));
-  }, [statsData]);
+  // Datos raw por estación para el gráfico de violín
+  const rawByStation = useMemo(() => {
+    const result: Record<string, number[]> = {};
+    data.forEach(row => {
+      const station = row.STATION;
+      const val = row[selectedParam];
+      if (typeof val === 'number' && !isNaN(val)) {
+        if (!result[station]) result[station] = [];
+        result[station].push(val);
+      }
+    });
+    return result;
+  }, [data, selectedParam]);
 
   return (
     <div className="space-y-6">
       {/* Controles */}
       <div className="bg-white p-4 rounded-lg shadow">
         <div className="flex flex-wrap gap-4 items-center">
-          {/* Toggle Desviación / Box Plot */}
+          {/* Toggle Desviación / Violín */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Tipo de gráfica
@@ -195,7 +186,7 @@ const StatCharts = ({ data }: StatChartsProps) => {
                 />
               </button>
               <span className={`text-sm ${showBoxPlot ? 'text-cyan-600 font-medium' : 'text-gray-500'}`}>
-                Box Plot
+                Violín
               </span>
             </div>
           </div>
@@ -259,59 +250,43 @@ const StatCharts = ({ data }: StatChartsProps) => {
       <div className="bg-white p-4 rounded-lg shadow">
         <h3 className="text-lg font-semibold mb-4 text-blue-700 flex items-center gap-2">
           <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
-          {showBoxPlot 
-            ? `Box Plot - ${selectedParam} por Estación`
+          {showBoxPlot
+            ? `Violín - ${selectedParam} por Estación`
             : `Desviación Estándar - ${selectedParam} por Estación`}
         </h3>
 
         {statsData.length > 0 ? (
+          showBoxPlot ? (
+            // Gráfica de Violín con Plotly
+            <Plot
+              data={stations.filter(s => (rawByStation[s] || []).length > 0).map(station => ({
+                type: 'violin' as const,
+                name: station,
+                y: rawByStation[station] || [],
+                x: new Array((rawByStation[station] || []).length).fill(station),
+                box: { visible: true },
+                meanline: { visible: true },
+                points: 'outliers' as const,
+                line: { color: STATION_COLORS[station] || '#3b82f6' },
+                fillcolor: (STATION_COLORS[station] || '#3b82f6') + '30',
+              }))}
+              layout={{
+                autosize: true,
+                height: 450,
+                margin: { t: 10, r: 20, b: 60, l: 60 },
+                yaxis: { title: { text: selectedParam }, zeroline: false, automargin: true },
+                xaxis: { title: { text: 'Estación' } },
+                showlegend: false,
+                violinmode: 'group',
+                plot_bgcolor: '#f9fafb',
+                paper_bgcolor: '#ffffff',
+              } as any}
+              config={{ responsive: true }}
+              style={{ width: '100%' }}
+              useResizeHandler
+            />
+          ) : (
           <ResponsiveContainer width="100%" height={450}>
-            {showBoxPlot ? (
-              // Box Plot simulado
-              <ComposedChart data={boxPlotData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                <XAxis dataKey="station" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const data = payload[0].payload;
-                      return (
-                        <div className="bg-white p-3 border border-gray-300 rounded-lg shadow-lg">
-                          <p className="font-semibold text-gray-800">{data.station}</p>
-                          <div className="text-sm text-gray-600 mt-1 space-y-1">
-                            <p>Mínimo: <span className="font-medium">{data.min}</span></p>
-                            <p>Q1 (25%): <span className="font-medium">{data.q1}</span></p>
-                            <p>Mediana: <span className="font-medium text-blue-600">{data.mediana}</span></p>
-                            <p>Q3 (75%): <span className="font-medium">{data.q3}</span></p>
-                            <p>Máximo: <span className="font-medium">{data.max}</span></p>
-                            <p className="border-t pt-1 mt-1">Promedio: <span className="font-medium text-green-600">{data.promedio}</span></p>
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Legend />
-                {/* Línea de mínimo a máximo */}
-                <Bar dataKey="base" stackId="box" fill="transparent" />
-                <Bar dataKey="rangoInferior" stackId="box" fill="#94a3b8" name="Rango (Min-Q1)" />
-                <Bar dataKey="cajaInferior" stackId="box" fill={PARAM_COLORS[selectedParam] || '#3b82f6'} name="Q1-Mediana" />
-                <Bar dataKey="cajaSuperior" stackId="box" fill={PARAM_COLORS[selectedParam] || '#3b82f6'} name="Mediana-Q3" opacity={0.7} />
-                <Bar dataKey="rangoSuperior" stackId="box" fill="#94a3b8" name="Rango (Q3-Max)" />
-                {/* Línea de promedio */}
-                <Line 
-                  type="monotone" 
-                  dataKey="promedio" 
-                  stroke="#22c55e" 
-                  strokeWidth={3}
-                  dot={{ fill: '#22c55e', r: 5 }}
-                  name="Promedio"
-                />
-              </ComposedChart>
-            ) : (
-              // Gráfica de Desviación Estándar
               <ComposedChart data={statsData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
                 <XAxis dataKey="station" tick={{ fontSize: 12 }} />
@@ -355,8 +330,8 @@ const StatCharts = ({ data }: StatChartsProps) => {
                   name="Desviación Estándar"
                 />
               </ComposedChart>
-            )}
           </ResponsiveContainer>
+          )
         ) : (
           <div className="flex items-center justify-center h-64 text-gray-500">
             No hay datos para mostrar
