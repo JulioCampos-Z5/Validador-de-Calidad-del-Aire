@@ -55,6 +55,8 @@ export interface ValidationResponse {
   success: boolean;
   message: string;
   output_filename: string;
+  file_format?: 'envista_raw' | 'bd_procesado';
+  revalidated?: boolean;
   summary: ValidationSummary;
   data_preview: Record<string, any>[];
   estadisticas_detalladas: EstadisticaDetallada[];
@@ -115,8 +117,12 @@ export const apiService = {
     return response.data;
   },
 
-  validateFull: async (filename: string, config?: Record<string, any>): Promise<ValidationResponse> => {
-    const response = await api.post('/validate/full', { filename, config });
+  validateFull: async (
+    filename: string,
+    config?: Record<string, any>,
+    revalidate: boolean = true
+  ): Promise<ValidationResponse> => {
+    const response = await api.post('/validate/full', { filename, config, revalidate });
     return response.data;
   },
 

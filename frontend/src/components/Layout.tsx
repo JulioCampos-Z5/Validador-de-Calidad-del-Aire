@@ -1,8 +1,7 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { 
+import {
   LayoutDashboard,
-  Upload,
   Settings,
   Wind,
   Menu,
@@ -17,8 +16,6 @@ interface LayoutProps {
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/upload', label: 'Subir Archivo', icon: Upload },
-  // { path: '/results', label: 'Resultados', icon: FileCheck },
   { path: '/charts', label: 'Gráficas', icon: BarChart3 },
   { path: '/config', label: 'Parámetros', icon: Settings },
 ];

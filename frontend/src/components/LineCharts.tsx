@@ -1,6 +1,13 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 // @ts-ignore — el bundle dist es browser-ready pero no tiene declaraciones de tipo propias
 import Plotly from 'plotly.js/dist/plotly.js';
+import {
+  CONTAMINANTES as CONTAMINANTES_CONST,
+  METEOROLOGICOS as METEOROLOGICOS_CONST,
+  COLORES_ESTACIONES,
+  getUnitsAndName,
+  getAxisLabel,
+} from '../constants';
 
 interface DataPoint {
   STATION: string;
@@ -13,21 +20,10 @@ interface LineChartsProps {
   data: DataPoint[];
 }
 
-const CONTAMINANTES = ['O3', 'NO', 'NO2', 'NOX', 'SO2', 'CO', 'PM10', 'PM2.5'];
-const METEOROLOGICOS = ['IT', 'ET', 'RH', 'WS', 'WD', 'PP', 'ATM', 'RS', 'UVI'];
+const CONTAMINANTES: string[] = [...CONTAMINANTES_CONST];
+const METEOROLOGICOS: string[] = [...METEOROLOGICOS_CONST];
 
-const PARAM_UNITS: Record<string, string> = {
-  O3: 'ppm', NO: 'ppm', NO2: 'ppm', NOX: 'ppm', SO2: 'ppm', CO: 'ppm',
-  PM10: 'µg/m³', 'PM2.5': 'µg/m³',
-  IT: '°C', ET: '°C', RH: '%', WS: 'm/s', WD: '°',
-  PP: 'mm', ATM: 'mmHg', RS: 'W/m²', UVI: '',
-};
-
-const STATION_COLORS: Record<string, string> = {
-  AGU: '#06b6d4', ATM: '#3b82f6', CEN: '#f97316', COU: '#22c55e',
-  LDO: '#ef4444', MIR: '#8b5cf6', OBL: '#ec4899', PIN: '#eab308',
-  SAN: '#14b8a6', SFE: '#a855f7', SMT: '#0ea5e9', TLA: '#6366f1', VAL: '#f43f5e',
-};
+const STATION_COLORS = COLORES_ESTACIONES;
 
 const PARAM_COLORS: Record<string, string> = {
   O3: '#3b82f6', NO: '#22c55e', NO2: '#ef4444', NOX: '#f59e0b',
@@ -100,16 +96,17 @@ const LineCharts = ({ data }: LineChartsProps) => {
     () => new Set(data.map(d => d.STATION))
   );
   const [selectedParams, setSelectedParams] = useState<Set<string>>(new Set(['O3']));
-  const [rightAxisParams, setRightAxisParams] = useState<Set<string>>(new Set());
-  const [paramCategory, setParamCategory] = useState<'contaminantes' | 'meteorologicos'>('contaminantes');
+  // Asignación de eje: default = y1, puede moverse a y2 o y3 (para mezclar unidades)
+  const [axisAssignments, setAxisAssignments] = useState<Record<string, 'y1' | 'y2' | 'y3'>>({});
   const [showValidationAlerts, setShowValidationAlerts] = useState(true);
 
-  // Cuando se carga un archivo nuevo, actualizar estaciones seleccionadas
   useEffect(() => {
     setSelectedStations(new Set(stations));
   }, [stations]);
 
-  const currentParams = paramCategory === 'contaminantes' ? CONTAMINANTES : METEOROLOGICOS;
+  const getAxis = (p: string): 'y1' | 'y2' | 'y3' => axisAssignments[p] || 'y1';
+  const setAxis = (p: string, axis: 'y1' | 'y2' | 'y3') =>
+    setAxisAssignments(prev => ({ ...prev, [p]: axis }));
 
   const toggleStation = (s: string) =>
     setSelectedStations(prev => { const next = new Set(prev); next.has(s) ? next.delete(s) : next.add(s); return next; });
@@ -117,18 +114,33 @@ const LineCharts = ({ data }: LineChartsProps) => {
   const toggleParam = (p: string) => {
     setSelectedParams(prev => {
       const next = new Set(prev);
-      if (next.has(p)) { next.delete(p); setRightAxisParams(r => { const nr = new Set(r); nr.delete(p); return nr; }); }
-      else next.add(p);
+      if (next.has(p)) {
+        next.delete(p);
+        setAxisAssignments(a => { const { [p]: _, ...rest } = a; return rest; });
+      } else {
+        next.add(p);
+        // Auto-asignación: al mezclar tipos distintos, el nuevo va a Y2.
+        const isMeteo = METEOROLOGICOS.includes(p);
+        const hasOtroTipo = Array.from(next).some(x => {
+          if (x === p) return false;
+          return METEOROLOGICOS.includes(x) !== isMeteo;
+        });
+        if (hasOtroTipo) {
+          setAxisAssignments(a => ({ ...a, [p]: 'y2' }));
+        }
+      }
       return next;
     });
   };
 
-  const toggleRightAxis = (p: string) =>
-    setRightAxisParams(prev => { const next = new Set(prev); next.has(p) ? next.delete(p) : next.add(p); return next; });
-
   const selectAllStations = () => setSelectedStations(new Set(stations));
   const clearAllStations = () => setSelectedStations(new Set());
 
+
+  // Map lógico: 'y1' -> 'y' (default Plotly), 'y2' -> 'y2', 'y3' -> 'y3'
+  const plotlyAxis = (a: 'y1' | 'y2' | 'y3') => (a === 'y1' ? 'y' : a);
+  // Estilo de línea por eje: Y1 sólido, Y2 discontinuo, Y3 punteado
+  const dashFor = (a: 'y1' | 'y2' | 'y3') => (a === 'y1' ? 'solid' : a === 'y2' ? 'dash' : 'dot');
 
   // Construir trazos Plotly
   const traces = useMemo(() => {
@@ -139,7 +151,8 @@ const LineCharts = ({ data }: LineChartsProps) => {
     const multiParam = paramsToShow.length > 1;
 
     paramsToShow.forEach((param, paramIdx) => {
-      const isRightAxis = rightAxisParams.has(param);
+      const axis = getAxis(param);
+      const yaxis = plotlyAxis(axis);
       const paramColor = PARAM_COLORS[param] || PALETTE[paramIdx % PALETTE.length];
 
       stationsToShow.forEach((station, stIdx) => {
@@ -162,9 +175,9 @@ const LineCharts = ({ data }: LineChartsProps) => {
             : `${station} · ${param}`,
           x,
           y,
-          connectgaps: false,          // ← SIN conexión entre nulos
-          yaxis: isRightAxis ? 'y2' : 'y',
-          line: { color, width: 1.5 },
+          connectgaps: false,
+          yaxis,
+          line: { color, width: 1.5, dash: dashFor(axis) },
           legendgroup: multiStation ? station : param,
         });
       });
@@ -211,7 +224,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
           showlegend: false,
           hoverinfo: 'skip',
           connectgaps: false,
-          yaxis: isRightAxis ? 'y2' : 'y',
+          yaxis,
         });
         // Banda superior con relleno
         result.push({
@@ -225,26 +238,26 @@ const LineCharts = ({ data }: LineChartsProps) => {
           name: `±σ ${param}`,
           hoverinfo: 'skip',
           connectgaps: false,
-          yaxis: isRightAxis ? 'y2' : 'y',
+          yaxis,
           legendgroup: `avg_${param}`,
         });
-        // Línea de promedio
+        // Línea de promedio — usa color "Mean" estándar de la paleta
         result.push({
           type: 'scatter',
           mode: 'lines',
           x: sortedTimes,
           y: means,
           name: `Promedio ${param}`,
-          line: { color: paramColor, width: 3, dash: 'dash' },
+          line: { color: STATION_COLORS.Mean || '#000000', width: 3, dash: dashFor(axis) === 'solid' ? 'dash' : dashFor(axis) },
           connectgaps: false,
-          yaxis: isRightAxis ? 'y2' : 'y',
+          yaxis,
           legendgroup: `avg_${param}`,
         });
       }
     });
 
     return result;
-  }, [dataByStation, selectedStations, selectedParams, rightAxisParams]);
+  }, [dataByStation, selectedStations, selectedParams, axisAssignments]);
 
   // ── Trazos de alerta: PM2.5 > PM10 ──────────────────────────────────────────
   const pm25pm10AlertTraces = useMemo(() => {
@@ -269,13 +282,13 @@ const LineCharts = ({ data }: LineChartsProps) => {
         x: violations.map(getTime),
         y: violations.map(d => getNumeric(d['PM2.5'])),
         marker: { color: 'red', size: 11, symbol: 'triangle-up', line: { color: '#7f0000', width: 1.5 } },
-        yaxis: rightAxisParams.has('PM2.5') ? 'y2' : 'y',
+        yaxis: plotlyAxis(getAxis('PM2.5')),
         connectgaps: false,
         legendgroup: `alert_pm_${station}`,
         hovertemplate: '<b>%{x}</b><br>PM2.5=%{y} (> PM10)<extra></extra>',
       }] as any[];
     });
-  }, [dataByStation, selectedStations, selectedParams, rightAxisParams, showValidationAlerts]);
+  }, [dataByStation, selectedStations, selectedParams, axisAssignments, showValidationAlerts]);
 
   // ── Shapes de fondo: valores constantes > 3 h ────────────────────────────────
   const constantRunShapes = useMemo(() => {
@@ -319,33 +332,42 @@ const LineCharts = ({ data }: LineChartsProps) => {
   }, [dataByStation, selectedStations, selectedParams, showValidationAlerts]);
 
   const layout = useMemo(() => {
-    const leftParams = Array.from(selectedParams).filter(p => !rightAxisParams.has(p));
-    const rightParams = Array.from(rightAxisParams);
+    const y1Params = Array.from(selectedParams).filter(p => getAxis(p) === 'y1');
+    const y2Params = Array.from(selectedParams).filter(p => getAxis(p) === 'y2');
+    const y3Params = Array.from(selectedParams).filter(p => getAxis(p) === 'y3');
 
-    const leftTitle = leftParams.map(p => `${p}${PARAM_UNITS[p] ? ` (${PARAM_UNITS[p]})` : ''}`).join(', ');
-    const rightTitle = rightParams.map(p => `${p}${PARAM_UNITS[p] ? ` (${PARAM_UNITS[p]})` : ''}`).join(', ');
+    const hasY3 = y3Params.length > 0;
 
     const base: any = {
       autosize: true,
-      height: 520,
-      margin: { t: 20, r: rightParams.length > 0 ? 80 : 30, b: 100, l: 70 },
+      height: 600,
+      margin: {
+        t: 20,
+        r: (y2Params.length > 0 ? 80 : 30) + (hasY3 ? 70 : 0),
+        b: 180,
+        l: 70,
+      },
       xaxis: {
         type: 'date',
         tickformat: '%d %b %y %H:%M',
         rangeslider: { visible: true, thickness: 0.05 },
         tickangle: -35,
+        domain: [0, hasY3 ? 0.92 : 1],
       },
       yaxis: {
-        title: leftTitle || 'Valor',
+        title: getAxisLabel(y1Params) || 'Valor',
         automargin: true,
         zeroline: false,
+        showgrid: true,
       },
       legend: {
         orientation: 'h',
         x: 0.5,
         xanchor: 'center',
-        y: -0.35,
+        y: -0.55,
+        yanchor: 'top',
         font: { size: 11 },
+        bgcolor: 'rgba(255,255,255,0.9)',
       },
       hovermode: 'x unified',
       plot_bgcolor: '#f9fafb',
@@ -353,18 +375,32 @@ const LineCharts = ({ data }: LineChartsProps) => {
       shapes: constantRunShapes,
     };
 
-    if (rightParams.length > 0) {
+    if (y2Params.length > 0) {
       base.yaxis2 = {
-        title: rightTitle,
+        title: getAxisLabel(y2Params),
         overlaying: 'y',
         side: 'right',
         automargin: true,
         zeroline: false,
+        showgrid: false,
+      };
+    }
+
+    if (hasY3) {
+      base.yaxis3 = {
+        title: getAxisLabel(y3Params),
+        overlaying: 'y',
+        side: 'right',
+        position: 0.98,
+        anchor: 'free',
+        automargin: true,
+        zeroline: false,
+        showgrid: false,
       };
     }
 
     return base;
-  }, [selectedParams, rightAxisParams, constantRunShapes]);
+  }, [selectedParams, axisAssignments, constantRunShapes]);
 
   const chartRef = useRef<HTMLDivElement>(null);
 
@@ -410,56 +446,62 @@ const LineCharts = ({ data }: LineChartsProps) => {
             </div>
           </div>
 
-          {/* Selector de parámetros */}
+          {/* Selector de parámetros (contaminantes y meteorológicos combinables) */}
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <h4 className="text-sm font-semibold text-gray-700">Parámetros</h4>
-              <div className="flex rounded-lg overflow-hidden border border-gray-200 text-xs">
-                <button
-                  onClick={() => { setParamCategory('contaminantes'); setSelectedParams(new Set(['O3'])); setRightAxisParams(new Set()); }}
-                  className={`px-3 py-1 transition-colors ${paramCategory === 'contaminantes' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                >
-                  Contaminantes
-                </button>
-                <button
-                  onClick={() => { setParamCategory('meteorologicos'); setSelectedParams(new Set(['IT'])); setRightAxisParams(new Set()); }}
-                  className={`px-3 py-1 transition-colors ${paramCategory === 'meteorologicos' ? 'bg-purple-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                >
-                  Meteorológicos
-                </button>
-              </div>
-            </div>
-            <p className="text-xs text-gray-400 mb-2">Selecciona uno o varios. <strong>Y1/Y2</strong> = eje vertical izquierdo / derecho (útil para variables con unidades distintas).</p>
-            <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
-              {currentParams.map(param => (
-                <div key={param} className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 cursor-pointer text-sm">
-                    <input
-                      type="checkbox"
-                      checked={selectedParams.has(param)}
-                      onChange={() => toggleParam(param)}
-                      className="accent-blue-600"
-                    />
-                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: PARAM_COLORS[param] || '#888' }} />
-                    <span className="font-medium" style={{ color: PARAM_COLORS[param] }}>{param}</span>
-                    {PARAM_UNITS[param] && <span className="text-gray-400 text-xs">({PARAM_UNITS[param]})</span>}
-                  </label>
-                  {selectedParams.has(param) && (
-                    <div className="flex gap-1 text-xs ml-2">
-                      <button
-                        onClick={() => rightAxisParams.has(param) && toggleRightAxis(param)}
-                        className={`px-2 py-0.5 rounded transition-colors ${!rightAxisParams.has(param) ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                      >
-                        Y1
-                      </button>
-                      <button
-                        onClick={() => !rightAxisParams.has(param) && toggleRightAxis(param)}
-                        className={`px-2 py-0.5 rounded transition-colors ${rightAxisParams.has(param) ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                      >
-                        Y2
-                      </button>
-                    </div>
-                  )}
+            <h4 className="text-sm font-semibold text-gray-700 mb-1">Parámetros</h4>
+            <p className="text-xs text-gray-400 mb-2">
+              Mezcla libremente contaminantes y variables meteorológicas. <strong>Y1/Y2</strong> = eje izquierdo/derecho.
+              Al combinar tipos, el nuevo se asigna automáticamente a Y2.
+            </p>
+            <div className="max-h-64 overflow-y-auto pr-1 space-y-3">
+              {([
+                { label: 'Contaminantes', color: 'text-green-700', items: CONTAMINANTES },
+                { label: 'Meteorológicos', color: 'text-purple-700', items: METEOROLOGICOS },
+              ] as const).map(section => (
+                <div key={section.label}>
+                  <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${section.color}`}>
+                    {section.label}
+                  </p>
+                  <div className="space-y-1">
+                    {section.items.map(param => (
+                      <div key={param} className="flex items-center justify-between">
+                        <label className="flex items-center gap-2 cursor-pointer text-sm">
+                          <input
+                            type="checkbox"
+                            checked={selectedParams.has(param)}
+                            onChange={() => toggleParam(param)}
+                            className="accent-blue-600"
+                          />
+                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: PARAM_COLORS[param] || '#888' }} />
+                          <span className="font-medium" style={{ color: PARAM_COLORS[param] }}>{param}</span>
+                          {getUnitsAndName(param).unit && <span className="text-gray-400 text-xs">({getUnitsAndName(param).unit})</span>}
+                        </label>
+                        {selectedParams.has(param) && (
+                          <div className="flex gap-1 text-xs ml-2">
+                            {(['y1', 'y2', 'y3'] as const).map(ax => {
+                              const isActive = getAxis(param) === ax;
+                              const label = ax.toUpperCase();
+                              const activeBg = ax === 'y1' ? 'bg-blue-500' : ax === 'y2' ? 'bg-orange-500' : 'bg-purple-500';
+                              return (
+                                <button
+                                  key={ax}
+                                  onClick={() => setAxis(param, ax)}
+                                  title={
+                                    ax === 'y1' ? 'Eje Y1 (izquierdo, línea sólida)' :
+                                    ax === 'y2' ? 'Eje Y2 (derecho, línea discontinua)' :
+                                    'Eje Y3 (derecho exterior, línea punteada)'
+                                  }
+                                  className={`px-2 py-0.5 rounded transition-colors ${isActive ? `${activeBg} text-white` : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -499,8 +541,15 @@ const LineCharts = ({ data }: LineChartsProps) => {
           {selectedStations.size > 1 && selectedParams.size > 0 && (
             <span className="text-blue-600">✦ Mostrando banda promedio ± desviación estándar</span>
           )}
-          {rightAxisParams.size > 0 && (
-            <span className="text-orange-600">⇔ Y2 (eje derecho): {Array.from(rightAxisParams).join(', ')}</span>
+          {Array.from(selectedParams).some(p => getAxis(p) === 'y2') && (
+            <span className="text-orange-600">
+              ⇔ Y2 (derecho, discontinuo): {Array.from(selectedParams).filter(p => getAxis(p) === 'y2').join(', ')}
+            </span>
+          )}
+          {Array.from(selectedParams).some(p => getAxis(p) === 'y3') && (
+            <span className="text-purple-600">
+              ⇔ Y3 (derecho exterior, punteado): {Array.from(selectedParams).filter(p => getAxis(p) === 'y3').join(', ')}
+            </span>
           )}
           <span className="ml-auto text-gray-400">Usa el control deslizante inferior para enfocar un período</span>
         </div>

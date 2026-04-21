@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   ComposedChart,
   Bar,
@@ -12,7 +12,14 @@ import {
   ErrorBar,
   Cell,
 } from 'recharts';
-import Plot from 'react-plotly.js';
+// @ts-ignore — mismo patrón que LineCharts: usamos Plotly directo (el wrapper react-plotly.js da problemas con plotly.js v3)
+import Plotly from 'plotly.js/dist/plotly.js';
+import {
+  CONTAMINANTES as CONTAMINANTES_CONST,
+  METEOROLOGICOS as METEOROLOGICOS_CONST,
+  COLORES_ESTACIONES,
+  getUnitsAndName,
+} from '../constants';
 
 interface DataPoint {
   STATION: string;
@@ -25,52 +32,26 @@ interface StatChartsProps {
   data: DataPoint[];
 }
 
-// Parámetros por categoría
-const CONTAMINANTES = ['O3', 'NO', 'NO2', 'NOX', 'SO2', 'CO', 'PM10', 'PM2.5'];
-const METEOROLOGICOS = ['IT', 'ET', 'RH', 'WS', 'WD', 'PP', 'ATM', 'RS', 'UVI'];
+// Parámetros por categoría (reexportados desde constants.ts)
+const CONTAMINANTES = [...CONTAMINANTES_CONST];
+const METEOROLOGICOS = [...METEOROLOGICOS_CONST];
 
-// Colores para cada parámetro
+// Color de barra por contaminante (solo para la gráfica de desviación)
 const PARAM_COLORS: Record<string, string> = {
-  'O3': '#3b82f6',
-  'NO': '#22c55e',
-  'NO2': '#ef4444',
-  'NOX': '#f59e0b',
-  'SO2': '#8b5cf6',
-  'CO': '#ec4899',
-  'PM10': '#f97316',
-  'PM2.5': '#06b6d4',
-  'IT': '#ef4444',
-  'ET': '#f59e0b',
-  'RH': '#3b82f6',
-  'WS': '#22c55e',
-  'WD': '#8b5cf6',
-  'PP': '#06b6d4',
-  'ATM': '#ec4899',
-  'RS': '#f97316',
-  'UVI': '#eab308',
+  O3: '#3b82f6', NO: '#22c55e', NO2: '#ef4444', NOX: '#f59e0b',
+  SO2: '#8b5cf6', CO: '#ec4899', PM10: '#f97316', 'PM2.5': '#06b6d4',
+  IT: '#ef4444', ET: '#f59e0b', RH: '#3b82f6', WS: '#22c55e',
+  WD: '#8b5cf6', PP: '#06b6d4', ATM: '#ec4899', RS: '#f97316', UVI: '#eab308',
 };
 
-// Colores para estaciones
-const STATION_COLORS: Record<string, string> = {
-  'AGU': '#06b6d4',
-  'ATM': '#3b82f6',
-  'CEN': '#f97316',
-  'COU': '#22c55e',
-  'LDO': '#ef4444',
-  'MIR': '#8b5cf6',
-  'OBL': '#ec4899',
-  'PIN': '#eab308',
-  'SAN': '#14b8a6',
-  'SFE': '#a855f7',
-  'SMT': '#0ea5e9',
-  'TLA': '#6366f1',
-  'VAL': '#f43f5e',
-};
+// Paleta fija por estación (fuente única)
+const STATION_COLORS = COLORES_ESTACIONES;
 
 const StatCharts = ({ data }: StatChartsProps) => {
   const [showBoxPlot, setShowBoxPlot] = useState<boolean>(false); // false = Desviación, true = Violín
   const [selectedParam, setSelectedParam] = useState<string>('O3');
   const [paramType, setParamType] = useState<'contaminantes' | 'meteorologicos'>('contaminantes');
+  const violinRef = useRef<HTMLDivElement>(null);
 
   // Obtener estaciones únicas
   const stations = useMemo(() => {
@@ -158,6 +139,46 @@ const StatCharts = ({ data }: StatChartsProps) => {
     });
     return result;
   }, [data, selectedParam]);
+
+  // Renderizar violín con Plotly.react directo (más confiable que react-plotly.js con plotly v3)
+  useEffect(() => {
+    if (!showBoxPlot || !violinRef.current) return;
+
+    const violinData = stations
+      .filter(s => (rawByStation[s] || []).length > 0)
+      .map(station => ({
+        type: 'violin',
+        name: station,
+        y: rawByStation[station],
+        box: { visible: true },
+        meanline: { visible: true },
+        points: 'outliers',
+        line: { color: STATION_COLORS[station] || '#3b82f6' },
+        fillcolor: (STATION_COLORS[station] || '#3b82f6') + '40',
+        opacity: 0.9,
+      }));
+
+    if (violinData.length === 0) {
+      Plotly.purge(violinRef.current);
+      return;
+    }
+
+    const info = getUnitsAndName(selectedParam);
+    const yTitle = info.unit ? `${info.name} [${info.unit}]` : info.name;
+    const layout = {
+      autosize: true,
+      height: 450,
+      margin: { t: 20, r: 20, b: 60, l: 80 },
+      yaxis: { title: yTitle, zeroline: false, automargin: true },
+      xaxis: { title: 'Estación', automargin: true },
+      showlegend: false,
+      violinmode: 'group',
+      plot_bgcolor: '#f9fafb',
+      paper_bgcolor: '#ffffff',
+    };
+
+    Plotly.react(violinRef.current, violinData, layout, { responsive: true, displayModeBar: true });
+  }, [showBoxPlot, rawByStation, stations, selectedParam]);
 
   return (
     <div className="space-y-6">
@@ -257,34 +278,8 @@ const StatCharts = ({ data }: StatChartsProps) => {
 
         {statsData.length > 0 ? (
           showBoxPlot ? (
-            // Gráfica de Violín con Plotly
-            <Plot
-              data={stations.filter(s => (rawByStation[s] || []).length > 0).map(station => ({
-                type: 'violin' as const,
-                name: station,
-                y: rawByStation[station] || [],
-                x: new Array((rawByStation[station] || []).length).fill(station),
-                box: { visible: true },
-                meanline: { visible: true },
-                points: 'outliers' as const,
-                line: { color: STATION_COLORS[station] || '#3b82f6' },
-                fillcolor: (STATION_COLORS[station] || '#3b82f6') + '30',
-              }))}
-              layout={{
-                autosize: true,
-                height: 450,
-                margin: { t: 10, r: 20, b: 60, l: 60 },
-                yaxis: { title: { text: selectedParam }, zeroline: false, automargin: true },
-                xaxis: { title: { text: 'Estación' } },
-                showlegend: false,
-                violinmode: 'group',
-                plot_bgcolor: '#f9fafb',
-                paper_bgcolor: '#ffffff',
-              } as any}
-              config={{ responsive: true }}
-              style={{ width: '100%' }}
-              useResizeHandler
-            />
+            // Gráfica de Violín con Plotly directo
+            <div ref={violinRef} style={{ width: '100%', height: '450px' }} />
           ) : (
           <ResponsiveContainer width="100%" height={450}>
               <ComposedChart data={statsData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
