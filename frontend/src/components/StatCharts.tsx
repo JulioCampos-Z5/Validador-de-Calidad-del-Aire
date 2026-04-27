@@ -144,19 +144,44 @@ const StatCharts = ({ data }: StatChartsProps) => {
   useEffect(() => {
     if (!showBoxPlot || !violinRef.current) return;
 
-    const violinData = stations
-      .filter(s => (rawByStation[s] || []).length > 0)
-      .map(station => ({
+    const filtered = stations.filter(s => (rawByStation[s] || []).length > 1);
+
+    const violinData = filtered.map(station => {
+      const color = STATION_COLORS[station] || '#3b82f6';
+      // Hex → rgba para relleno semitransparente
+      const r = parseInt(color.slice(1, 3), 16);
+      const g = parseInt(color.slice(3, 5), 16);
+      const b = parseInt(color.slice(5, 7), 16);
+      const fillRgba = `rgba(${r},${g},${b},0.35)`;
+
+      return {
         type: 'violin',
         name: station,
         y: rawByStation[station],
-        box: { visible: true },
-        meanline: { visible: true },
+        // Caja interna visible con color contrastante
+        box: {
+          visible: true,
+          width: 0.35,
+          fillcolor: `rgba(${r},${g},${b},0.15)`,
+          line: { color, width: 1.5 },
+        },
+        // Línea de la media
+        meanline: { visible: true, color: '#1e293b', width: 2 },
+        // Outliers como puntos pequeños
         points: 'outliers',
-        line: { color: STATION_COLORS[station] || '#3b82f6' },
-        fillcolor: (STATION_COLORS[station] || '#3b82f6') + '40',
-        opacity: 0.9,
-      }));
+        jitter: 0.3,
+        pointpos: 0,
+        marker: { color, size: 4, opacity: 0.6, line: { width: 0.5, color: '#fff' } },
+        // Cuerpo del violín
+        line: { color, width: 2 },
+        fillcolor: fillRgba,
+        opacity: 1,
+        spanmode: 'soft',
+        bandwidth: 0,        // Plotly elige el bandwidth óptimo automáticamente
+        scalemode: 'width',
+        width: 0.85,
+      };
+    });
 
     if (violinData.length === 0) {
       Plotly.purge(violinRef.current);
@@ -167,17 +192,34 @@ const StatCharts = ({ data }: StatChartsProps) => {
     const yTitle = info.unit ? `${info.name} [${info.unit}]` : info.name;
     const layout = {
       autosize: true,
-      height: 450,
-      margin: { t: 20, r: 20, b: 60, l: 80 },
-      yaxis: { title: yTitle, zeroline: false, automargin: true },
-      xaxis: { title: 'Estación', automargin: true },
+      height: 520,
+      margin: { t: 30, r: 30, b: 80, l: 90 },
+      yaxis: {
+        title: { text: yTitle, font: { size: 13 } },
+        zeroline: true,
+        zerolinecolor: '#cbd5e1',
+        gridcolor: '#e2e8f0',
+        automargin: true,
+      },
+      xaxis: {
+        title: { text: 'Estación', font: { size: 13 } },
+        tickfont: { size: 12, color: '#334155' },
+        automargin: true,
+      },
       showlegend: false,
-      violinmode: 'group',
-      plot_bgcolor: '#f9fafb',
+      violinmode: 'overlay',
+      violingap: 0.15,
+      violingroupgap: 0.1,
+      plot_bgcolor: '#f8fafc',
       paper_bgcolor: '#ffffff',
+      font: { family: 'Inter, system-ui, sans-serif', color: '#334155' },
     };
 
-    Plotly.react(violinRef.current, violinData, layout, { responsive: true, displayModeBar: true });
+    Plotly.react(violinRef.current, violinData, layout, {
+      responsive: true,
+      displayModeBar: true,
+      modeBarButtonsToRemove: ['select2d', 'lasso2d'],
+    });
   }, [showBoxPlot, rawByStation, stations, selectedParam]);
 
   return (
@@ -279,7 +321,7 @@ const StatCharts = ({ data }: StatChartsProps) => {
         {statsData.length > 0 ? (
           showBoxPlot ? (
             // Gráfica de Violín con Plotly directo
-            <div ref={violinRef} style={{ width: '100%', height: '450px' }} />
+            <div ref={violinRef} style={{ width: '100%', height: '520px' }} />
           ) : (
           <ResponsiveContainer width="100%" height={450}>
               <ComposedChart data={statsData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>

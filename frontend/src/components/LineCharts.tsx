@@ -33,11 +33,6 @@ const PARAM_COLORS: Record<string, string> = {
 };
 
 // Paleta extra para multi-param/multi-station
-const PALETTE = [
-  '#3b82f6','#ef4444','#22c55e','#f59e0b','#8b5cf6','#ec4899',
-  '#06b6d4','#f97316','#14b8a6','#a855f7','#0ea5e9','#6366f1',
-];
-
 function hexToRgba(hex: string, alpha: number) {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -99,6 +94,12 @@ const LineCharts = ({ data }: LineChartsProps) => {
   // Asignación de eje: default = y1, puede moverse a y2 o y3 (para mezclar unidades)
   const [axisAssignments, setAxisAssignments] = useState<Record<string, 'y1' | 'y2' | 'y3'>>({});
   const [showValidationAlerts, setShowValidationAlerts] = useState(true);
+  // Estilo de línea por parámetro (override manual)
+  const [lineStyles, setLineStyles] = useState<Record<string, 'solid' | 'dash' | 'dot'>>({});
+  // Color de línea por parámetro (override manual)
+  const [lineColors, setLineColors] = useState<Record<string, string>>({});
+  // Color personalizado por estación
+  const [stationColorOverrides, setStationColorOverrides] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setSelectedStations(new Set(stations));
@@ -107,6 +108,18 @@ const LineCharts = ({ data }: LineChartsProps) => {
   const getAxis = (p: string): 'y1' | 'y2' | 'y3' => axisAssignments[p] || 'y1';
   const setAxis = (p: string, axis: 'y1' | 'y2' | 'y3') =>
     setAxisAssignments(prev => ({ ...prev, [p]: axis }));
+
+  const getLineStyle = (p: string): 'solid' | 'dash' | 'dot' => lineStyles[p] || 'solid';
+  const setLineStyle = (p: string, style: 'solid' | 'dash' | 'dot') =>
+    setLineStyles(prev => ({ ...prev, [p]: style }));
+
+  const getLineColor = (p: string): string => lineColors[p] || PARAM_COLORS[p] || '#888';
+  const setLineColor = (p: string, color: string) =>
+    setLineColors(prev => ({ ...prev, [p]: color }));
+
+  const getStationColor = (s: string): string => stationColorOverrides[s] || STATION_COLORS[s] || '#888';
+  const setStationColor = (s: string, color: string) =>
+    setStationColorOverrides(prev => ({ ...prev, [s]: color }));
 
   const toggleStation = (s: string) =>
     setSelectedStations(prev => { const next = new Set(prev); next.has(s) ? next.delete(s) : next.add(s); return next; });
@@ -139,8 +152,6 @@ const LineCharts = ({ data }: LineChartsProps) => {
 
   // Map lógico: 'y1' -> 'y' (default Plotly), 'y2' -> 'y2', 'y3' -> 'y3'
   const plotlyAxis = (a: 'y1' | 'y2' | 'y3') => (a === 'y1' ? 'y' : a);
-  // Estilo de línea por eje: Y1 sólido, Y2 discontinuo, Y3 punteado
-  const dashFor = (a: 'y1' | 'y2' | 'y3') => (a === 'y1' ? 'solid' : a === 'y2' ? 'dash' : 'dot');
 
   // Construir trazos Plotly
   const traces = useMemo(() => {
@@ -150,20 +161,20 @@ const LineCharts = ({ data }: LineChartsProps) => {
     const multiStation = stationsToShow.length > 1;
     const multiParam = paramsToShow.length > 1;
 
-    paramsToShow.forEach((param, paramIdx) => {
+    paramsToShow.forEach((param) => {
       const axis = getAxis(param);
       const yaxis = plotlyAxis(axis);
-      const paramColor = PARAM_COLORS[param] || PALETTE[paramIdx % PALETTE.length];
+      const paramColor = getLineColor(param);
+      const paramDash = getLineStyle(param);
 
-      stationsToShow.forEach((station, stIdx) => {
+      stationsToShow.forEach((station) => {
         const stationData = dataByStation[station] || [];
 
         const x = stationData.map(getTime);
         const y = stationData.map(d => getNumeric(d[param]));
 
-        const color = multiParam
-          ? PALETTE[(paramIdx * 3 + stIdx) % PALETTE.length]
-          : STATION_COLORS[station] || PALETTE[stIdx % PALETTE.length];
+        // Las líneas de estación siempre usan el color de la estación
+        const color = getStationColor(station);
 
         result.push({
           type: 'scatter',
@@ -177,7 +188,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
           y,
           connectgaps: false,
           yaxis,
-          line: { color, width: 1.5, dash: dashFor(axis) },
+          line: { color, width: 1.5, dash: paramDash },
           legendgroup: multiStation ? station : param,
         });
       });
@@ -248,7 +259,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
           x: sortedTimes,
           y: means,
           name: `Promedio ${param}`,
-          line: { color: STATION_COLORS.Mean || '#000000', width: 3, dash: dashFor(axis) === 'solid' ? 'dash' : dashFor(axis) },
+          line: { color: getLineColor(param), width: 3, dash: 'solid' },
           connectgaps: false,
           yaxis,
           legendgroup: `avg_${param}`,
@@ -257,7 +268,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
     });
 
     return result;
-  }, [dataByStation, selectedStations, selectedParams, axisAssignments]);
+  }, [dataByStation, selectedStations, selectedParams, axisAssignments, lineColors, lineStyles, stationColorOverrides]);
 
   // ── Trazos de alerta: PM2.5 > PM10 ──────────────────────────────────────────
   const pm25pm10AlertTraces = useMemo(() => {
@@ -429,26 +440,50 @@ const LineCharts = ({ data }: LineChartsProps) => {
             </div>
             <div className="grid grid-cols-3 gap-1 max-h-48 overflow-y-auto pr-1">
               {stations.map(station => (
-                <label key={station} className="flex items-center gap-1.5 cursor-pointer text-sm py-0.5">
+                <div key={station} className="flex items-center gap-1.5 text-sm py-0.5">
                   <input
                     type="checkbox"
                     checked={selectedStations.has(station)}
                     onChange={() => toggleStation(station)}
-                    className="accent-blue-600"
+                    className="accent-blue-600 cursor-pointer flex-shrink-0"
                   />
+                  <div
+                    className="relative flex-shrink-0 cursor-pointer"
+                    title="Color de la estación"
+                    style={{ width: 16, height: 16 }}
+                  >
+                    <span
+                      className="w-4 h-4 rounded block border border-gray-300 shadow-sm"
+                      style={{ backgroundColor: getStationColor(station) }}
+                    />
+                    <input
+                      type="color"
+                      value={getStationColor(station)}
+                      onChange={e => setStationColor(station, e.target.value)}
+                      className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                    />
+                  </div>
                   <span
-                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: STATION_COLORS[station] || '#888' }}
-                  />
-                  <span className="text-gray-700">{station}</span>
-                </label>
+                    className="text-gray-700 cursor-pointer"
+                    onClick={() => toggleStation(station)}
+                  >{station}</span>
+                </div>
               ))}
             </div>
           </div>
 
           {/* Selector de parámetros (contaminantes y meteorológicos combinables) */}
           <div>
-            <h4 className="text-sm font-semibold text-gray-700 mb-1">Parámetros</h4>
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="text-sm font-semibold text-gray-700">Parámetros</h4>
+              <button
+                onClick={() => { setLineStyles({}); setLineColors({}); setAxisAssignments({}); setStationColorOverrides({}); }}
+                className="text-xs text-red-500 hover:text-red-700 hover:underline transition-colors"
+                title="Restablecer colores, estilos y ejes a los valores predeterminados"
+              >
+                Restablecer
+              </button>
+            </div>
             <p className="text-xs text-gray-400 mb-2">
               Mezcla libremente contaminantes y variables meteorológicas. <strong>Y1/Y2</strong> = eje izquierdo/derecho.
               Al combinar tipos, el nuevo se asigna automáticamente a Y2.
@@ -472,31 +507,69 @@ const LineCharts = ({ data }: LineChartsProps) => {
                             onChange={() => toggleParam(param)}
                             className="accent-blue-600"
                           />
-                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: PARAM_COLORS[param] || '#888' }} />
-                          <span className="font-medium" style={{ color: PARAM_COLORS[param] }}>{param}</span>
+                          <span
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: getLineColor(param) }}
+                          />
+                          <span className="font-medium" style={{ color: getLineColor(param) }}>{param}</span>
                           {getUnitsAndName(param).unit && <span className="text-gray-400 text-xs">({getUnitsAndName(param).unit})</span>}
                         </label>
                         {selectedParams.has(param) && (
-                          <div className="flex gap-1 text-xs ml-2">
-                            {(['y1', 'y2', 'y3'] as const).map(ax => {
-                              const isActive = getAxis(param) === ax;
-                              const label = ax.toUpperCase();
-                              const activeBg = ax === 'y1' ? 'bg-blue-500' : ax === 'y2' ? 'bg-orange-500' : 'bg-purple-500';
-                              return (
-                                <button
-                                  key={ax}
-                                  onClick={() => setAxis(param, ax)}
-                                  title={
-                                    ax === 'y1' ? 'Eje Y1 (izquierdo, línea sólida)' :
-                                    ax === 'y2' ? 'Eje Y2 (derecho, línea discontinua)' :
-                                    'Eje Y3 (derecho exterior, línea punteada)'
-                                  }
-                                  className={`px-2 py-0.5 rounded transition-colors ${isActive ? `${activeBg} text-white` : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                                >
-                                  {label}
-                                </button>
-                              );
-                            })}
+                          <div className="flex items-center gap-1 ml-2 flex-wrap">
+                            {/* Ejes Y */}
+                            <div className="flex gap-1 text-xs">
+                              {(['y1', 'y2', 'y3'] as const).map(ax => {
+                                const isActive = getAxis(param) === ax;
+                                const activeBg = ax === 'y1' ? 'bg-blue-500' : ax === 'y2' ? 'bg-orange-500' : 'bg-purple-500';
+                                return (
+                                  <button
+                                    key={ax}
+                                    onClick={() => setAxis(param, ax)}
+                                    title={ax === 'y1' ? 'Eje izquierdo' : ax === 'y2' ? 'Eje derecho' : 'Eje derecho exterior'}
+                                    className={`px-2 py-0.5 rounded transition-colors ${isActive ? `${activeBg} text-white` : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                                  >
+                                    {ax.toUpperCase()}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {/* Estilo de línea */}
+                            <div className="flex gap-1 text-xs">
+                              {([
+                                { val: 'solid' as const, label: '—', title: 'Línea continua' },
+                                { val: 'dash'  as const, label: '╌', title: 'Línea discontinua' },
+                                { val: 'dot'   as const, label: '···', title: 'Línea punteada' },
+                              ]).map(({ val, label, title }) => {
+                                const isActive = getLineStyle(param) === val;
+                                return (
+                                  <button
+                                    key={val}
+                                    onClick={() => setLineStyle(param, val)}
+                                    title={title}
+                                    className={`px-2 py-0.5 rounded transition-colors font-mono ${isActive ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                                  >
+                                    {label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {/* Color picker del parámetro */}
+                            <div
+                              className="relative flex-shrink-0 cursor-pointer"
+                              title="Color de la línea del parámetro"
+                              style={{ width: 16, height: 16 }}
+                            >
+                              <span
+                                className="w-4 h-4 rounded block border border-gray-300 shadow-sm"
+                                style={{ backgroundColor: getLineColor(param) }}
+                              />
+                              <input
+                                type="color"
+                                value={getLineColor(param)}
+                                onChange={e => setLineColor(param, e.target.value)}
+                                className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                              />
+                            </div>
                           </div>
                         )}
                       </div>

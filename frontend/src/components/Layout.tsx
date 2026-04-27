@@ -22,6 +22,7 @@ const navItems = [
 
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
+  const isCharts = location.pathname === '/charts';
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -32,7 +33,7 @@ export default function Layout({ children }: LayoutProps) {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="lg:hidden p-2 rounded-lg hover:bg-slate-100"
+              className={`p-2 rounded-lg hover:bg-slate-100 ${isCharts ? '' : 'lg:hidden'}`}
             >
               {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
@@ -58,7 +59,7 @@ export default function Layout({ children }: LayoutProps) {
       <aside
         className={`fixed top-0 left-0 z-20 h-full w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out pt-16 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0`}
+        } ${isCharts ? '' : 'lg:translate-x-0'}`}
       >
         <nav className="p-4 space-y-2">
           {navItems.map((item) => {
@@ -105,13 +106,13 @@ export default function Layout({ children }: LayoutProps) {
       {/* Overlay for mobile */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/20 z-10 lg:hidden"
+          className={`fixed inset-0 bg-black/20 z-10 ${isCharts ? '' : 'lg:hidden'}`}
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* Main Content */}
-      <main className="lg:ml-64 pt-16 min-h-screen">
+      <main className={`${isCharts ? '' : 'lg:ml-64'} pt-16 min-h-screen`}>
         <div className="p-6">
           {children}
         </div>

@@ -4,6 +4,7 @@ node_modules/
 .pnp.js
 
 CLAUDE.md
+otros/
 
 # Build/Producción
 dist/
