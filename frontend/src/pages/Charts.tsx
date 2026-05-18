@@ -4,6 +4,7 @@ import { useDropzone } from 'react-dropzone';
 import apiService from '../services/api';
 import LineCharts from '../components/LineCharts';
 import StatCharts from '../components/StatCharts';
+import CalendarHeatmaps from '../components/CalendarHeatmaps';
 
 interface DataPoint {
   STATION: string;
@@ -185,6 +186,7 @@ const Charts = () => {
 
           <LineCharts data={data} />
           <StatCharts data={data} />
+          <CalendarHeatmaps data={data} />
         </>
       )}
     </div>
