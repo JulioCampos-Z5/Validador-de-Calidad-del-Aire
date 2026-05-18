@@ -23,6 +23,7 @@ export default function FileUpload({ onFileUpload, isLoading, error, success }: 
     accept: {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
       'application/vnd.ms-excel': ['.xls'],
+      'text/csv': ['.csv'],
     },
     maxFiles: 1,
     disabled: isLoading,
@@ -63,7 +64,7 @@ export default function FileUpload({ onFileUpload, isLoading, error, success }: 
             </p>
           </div>
           <p className="text-xs text-slate-400">
-            Formatos soportados: .xlsx, .xls (Máx. 50MB)
+            Formatos soportados: .xlsx, .xls, .csv (Máx. 50MB)
           </p>
         </div>
       </div>

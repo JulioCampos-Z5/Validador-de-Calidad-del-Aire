@@ -22,7 +22,7 @@ CORS(app)
 
 # Configuración
 UPLOAD_FOLDER = tempfile.mkdtemp()
-ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max
 
@@ -125,6 +125,15 @@ COLUMNAS_BD = [
 # FUNCIONES DE VALIDACIÓN
 # ============================================================================
 
+def _intentar_float(valor_str):
+    """Convertir un string a float aceptando coma como separador decimal (es-MX)."""
+    s = valor_str.strip()
+    # Decimal español: "0,009" -> "0.009" (solo si hay una sola coma y ningún punto)
+    if s.count(',') == 1 and '.' not in s:
+        s = s.replace(',', '.')
+    return float(s)
+
+
 def mapear_bandera_envista(valor):
     """Mapear una bandera de ENVISTA a formato estándar"""
     if pd.isna(valor):
@@ -140,7 +149,7 @@ def mapear_bandera_envista(valor):
             return bandera_std
     
     try:
-        float(valor_str)
+        _intentar_float(valor_str)
         return None
     except (ValueError, TypeError):
         return 'IO'
@@ -149,10 +158,23 @@ def mapear_bandera_envista(valor):
 def detectar_formato_archivo(filepath):
     """Detectar si el archivo es Envista crudo o un BD ya procesado.
 
-    Retorna 'bd_procesado' si existe hoja 'Data' o 'Datos_Validados',
-    'envista_raw' en caso contrario.
+    Retorna 'bd_procesado' si:
+      - .xlsx/.xls: existe hoja 'Data' o 'Datos_Validados'.
+      - .csv: las columnas incluyen STATION y DATE.
+    En cualquier otro caso retorna 'envista_raw'.
     """
+    ext = os.path.splitext(filepath)[1].lower()
     try:
+        if ext == '.csv':
+            try:
+                df_head = pd.read_csv(filepath, nrows=1)
+                cols_upper = {str(c).strip().upper() for c in df_head.columns}
+                if 'STATION' in cols_upper and 'DATE' in cols_upper:
+                    return 'bd_procesado', None
+            except Exception:
+                pass
+            return 'envista_raw', None
+
         xl = pd.ExcelFile(filepath)
         sheets_lower = {s.lower(): s for s in xl.sheet_names}
         if 'data' in sheets_lower or 'datos_validados' in sheets_lower:
@@ -163,12 +185,16 @@ def detectar_formato_archivo(filepath):
 
 
 def cargar_archivo_procesado(filepath, sheet_name):
-    """Cargar datos desde un archivo ya procesado (hoja Data o Datos_Validados).
+    """Cargar datos desde un archivo ya procesado (hoja Data o Datos_Validados, o CSV BD).
 
     Devuelve un DataFrame en formato BD (STATION, DATE, HOUR, ...) listo
     para pasar por validar_datos_completo.
     """
-    df = pd.read_excel(filepath, sheet_name=sheet_name)
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext == '.csv':
+        df = pd.read_csv(filepath)
+    else:
+        df = pd.read_excel(filepath, sheet_name=sheet_name)
 
     if 'DATE' in df.columns:
         df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce').dt.strftime('%Y-%m-%d')
@@ -185,21 +211,84 @@ def cargar_archivo_procesado(filepath, sheet_name):
 
 
 def cargar_y_procesar_envista(archivo_trs):
-    """Cargar y procesar datos desde Trs.xlsx (formato ENVISTA)"""
+    """Cargar y procesar datos desde Trs.xlsx o .csv (formato ENVISTA).
+
+    Acepta archivos con una o varias estaciones. Las estaciones se descubren
+    dinámicamente desde la fila 2 (encabezado de estación).
+    """
     try:
-        df_raw = pd.read_excel(archivo_trs, sheet_name=0, header=None)
-        
-        estaciones = df_raw.iloc[2, :].values
-        parametros = df_raw.iloc[3, :].values
-        
-        nuevas_columnas = ['DateTime']
-        for i in range(1, len(estaciones)):
-            if pd.notna(estaciones[i]) and pd.notna(parametros[i]):
-                nuevas_columnas.append(f"{estaciones[i]}_{parametros[i]}")
-            else:
-                nuevas_columnas.append(f"Col_{i}")
-        
-        df_datos = df_raw.iloc[5:, :len(nuevas_columnas)].copy()
+        ext = os.path.splitext(archivo_trs)[1].lower()
+        if ext == '.csv':
+            df_raw = pd.read_csv(
+                archivo_trs, header=None, dtype=str, keep_default_na=False
+            )
+        else:
+            df_raw = pd.read_excel(archivo_trs, sheet_name=0, header=None)
+
+        # Detectar layout:
+        #  - Multi-estación: fila 2 = estaciones, fila 3 = parámetros, fila 4 = unidades, datos desde fila 5.
+        #  - Compacto 1 estación: fila 0 = título, fila 2 = parámetros, fila 3 = unidades, datos desde fila 4.
+        UNIDADES_CONOCIDAS = {
+            'ppm', 'ppb', 'µg/m3', 'ug/m3', 'μg/m3', '°c', 'oc', '%',
+            'm/s', 'mm', 'w/m2', 'mb', 'mbar', 'mmhg', 'deg', 'grados',
+            'index', 'hpa'
+        }
+
+        def _es_fila_unidades(serie):
+            vals = [str(v).strip().lower() for v in serie.values[1:] if pd.notna(v) and str(v).strip() != '']
+            if not vals:
+                return False
+            coincidencias = sum(1 for v in vals if v in UNIDADES_CONOCIDAS)
+            return coincidencias >= max(2, len(vals) // 2)
+
+        layout_compacto = _es_fila_unidades(df_raw.iloc[3, :])
+
+        if layout_compacto:
+            # Una sola estación: extraer su nombre del título (fila 0).
+            # Ejemplo: "Multiestación:Vallarta Periódica:01-04-26 1:00 AM-... Tipo:AVG 1 Hr."
+            titulo = str(df_raw.iloc[0, 0]) if pd.notna(df_raw.iloc[0, 0]) else ''
+            estacion_nombre = ''
+            if ':' in titulo:
+                partes = titulo.split(':')
+                if len(partes) >= 2:
+                    estacion_nombre = partes[1].strip()
+                    for suf in (' Periódica', ' Periodica'):
+                        if estacion_nombre.lower().endswith(suf.lower()):
+                            estacion_nombre = estacion_nombre[: -len(suf)].strip()
+
+            mapeo_lower = {k.lower(): k for k in MAPEO_ESTACIONES}
+            estacion_match = mapeo_lower.get(estacion_nombre.lower(), estacion_nombre)
+
+            parametros = df_raw.iloc[2, :].values
+            nuevas_columnas = ['DateTime']
+            for i in range(1, len(parametros)):
+                par = parametros[i]
+                par_ok = pd.notna(par) and str(par).strip() != ''
+                if par_ok and estacion_match:
+                    nuevas_columnas.append(f"{estacion_match}_{str(par).strip()}")
+                elif par_ok:
+                    nuevas_columnas.append(str(par).strip())
+                else:
+                    nuevas_columnas.append(f"Col_{i}")
+            data_start = 4
+        else:
+            estaciones = df_raw.iloc[2, :].values
+            parametros = df_raw.iloc[3, :].values
+            nuevas_columnas = ['DateTime']
+            for i in range(1, len(estaciones)):
+                est = estaciones[i]
+                par = parametros[i]
+                est_ok = pd.notna(est) and str(est).strip() != ''
+                par_ok = pd.notna(par) and str(par).strip() != ''
+                if est_ok and par_ok:
+                    nuevas_columnas.append(f"{str(est).strip()}_{str(par).strip()}")
+                elif par_ok:
+                    nuevas_columnas.append(str(par).strip())
+                else:
+                    nuevas_columnas.append(f"Col_{i}")
+            data_start = 5
+
+        df_datos = df_raw.iloc[data_start:, :len(nuevas_columnas)].copy()
         df_datos.columns = nuevas_columnas
         df_datos = df_datos.reset_index(drop=True)
         
@@ -227,63 +316,107 @@ def cargar_y_procesar_envista(archivo_trs):
         return None
 
 
+def _abreviar_estacion(nombre):
+    """Generar código de 3 letras para una estación que no esté en MAPEO_ESTACIONES."""
+    limpio = ''.join(ch for ch in str(nombre).upper() if ch.isalnum())
+    return (limpio[:3] or 'UNK')
+
+
 def convertir_a_formato_base(df_envista):
-    """Convertir formato ENVISTA al formato exacto de BD_2024.xlsx"""
+    """Convertir formato ENVISTA al formato exacto de BD_2024.xlsx.
+
+    Las estaciones se descubren dinámicamente a partir de los prefijos de
+    columnas del DataFrame Envista. Esto permite procesar archivos con una
+    sola estación, varias o incluso estaciones no listadas en MAPEO_ESTACIONES
+    (se les asigna un código de 3 letras como fallback).
+
+    También soporta archivos sin prefijo de estación (columnas directamente
+    con nombres de parámetros): se trata todo como una única estación 'UNK'.
+    """
     datos_convertidos = []
-    
-    for idx, fila in df_envista.iterrows():
+
+    # 1. Descubrir estaciones presentes en las columnas
+    estaciones_presentes = {}  # nombre_completo -> abreviatura
+    columnas_sin_prefijo = []
+    for col in df_envista.columns:
+        if col == 'DateTime':
+            continue
+        if '_' in col:
+            estacion = col.split('_', 1)[0]
+            if estacion not in estaciones_presentes:
+                estaciones_presentes[estacion] = (
+                    MAPEO_ESTACIONES.get(estacion) or _abreviar_estacion(estacion)
+                )
+        else:
+            columnas_sin_prefijo.append(col)
+
+    # 2. Si NO hay ninguna estación con prefijo pero sí columnas de parámetros,
+    #    asumir archivo de una sola estación sin nombre (modo "UNK").
+    if not estaciones_presentes and columnas_sin_prefijo:
+        estaciones_presentes[''] = 'UNK'
+
+    if not estaciones_presentes:
+        return pd.DataFrame()
+
+    for _, fila in df_envista.iterrows():
         fecha_hora = fila['DateTime']
         if pd.isna(fecha_hora):
             continue
-        
+
         fecha = fecha_hora.strftime('%Y-%m-%d')
         hora = int(fecha_hora.hour)
-        
-        for estacion_completa, abrev_estacion in MAPEO_ESTACIONES.items():
-            fila_base = {
-                'STATION': abrev_estacion,
-                'DATE': fecha,
-                'HOUR': hora
-            }
-            
+
+        for estacion_completa, abrev_estacion in estaciones_presentes.items():
+            fila_base = {'STATION': abrev_estacion, 'DATE': fecha, 'HOUR': hora}
             for param in COLUMNAS_BD[3:]:
                 fila_base[param] = None
-            
+
             for col in df_envista.columns:
-                if col.startswith(estacion_completa + '_'):
-                    parametro_envista = col.split('_', 1)[1]
-                    parametro_base = MAPEO_PARAMETROS.get(parametro_envista, parametro_envista)
-                    
-                    if parametro_base in COLUMNAS_BD:
-                        valor = fila[col]
-                        if pd.notna(valor) and valor != '':
-                            bandera_mapeada = mapear_bandera_envista(valor)
-                            
-                            if bandera_mapeada is not None:
-                                fila_base[parametro_base] = bandera_mapeada
-                            else:
-                                try:
-                                    valor_num = float(valor)
-                                    fila_base[parametro_base] = valor_num
-                                except (ValueError, TypeError):
-                                    fila_base[parametro_base] = 'IO'
-            
-            datos_validos = sum(1 for k, v in fila_base.items()
-                              if k not in ['STATION', 'DATE', 'HOUR'] and v is not None)
-            
+                if col == 'DateTime':
+                    continue
+
+                if estacion_completa == '':
+                    # Modo sin prefijo: solo columnas que NO tengan '_'
+                    if '_' in col:
+                        continue
+                    parametro_envista = col
+                else:
+                    prefix = estacion_completa + '_'
+                    if not col.startswith(prefix):
+                        continue
+                    parametro_envista = col[len(prefix):]
+
+                parametro_base = MAPEO_PARAMETROS.get(parametro_envista, parametro_envista)
+                if parametro_base not in COLUMNAS_BD:
+                    continue
+
+                valor = fila[col]
+                if not pd.notna(valor) or valor == '':
+                    continue
+
+                bandera_mapeada = mapear_bandera_envista(valor)
+                if bandera_mapeada is not None:
+                    fila_base[parametro_base] = bandera_mapeada
+                else:
+                    try:
+                        fila_base[parametro_base] = _intentar_float(str(valor))
+                    except (ValueError, TypeError):
+                        fila_base[parametro_base] = 'IO'
+
+            datos_validos = sum(
+                1 for k, v in fila_base.items()
+                if k not in ['STATION', 'DATE', 'HOUR'] and v is not None
+            )
             if datos_validos > 0:
                 datos_convertidos.append(fila_base)
-    
+
     if datos_convertidos:
         df_convertido = pd.DataFrame(datos_convertidos)
-        
         for col in COLUMNAS_BD:
             if col not in df_convertido.columns:
                 df_convertido[col] = None
-        
         df_convertido = df_convertido[COLUMNAS_BD]
         df_convertido = df_convertido.sort_values(['STATION', 'DATE', 'HOUR']).reset_index(drop=True)
-        
         return df_convertido
     else:
         return pd.DataFrame()
@@ -663,7 +796,7 @@ def upload_file():
             'filepath': filepath
         })
     
-    return jsonify({'error': 'Tipo de archivo no permitido. Use .xlsx o .xls'}), 400
+    return jsonify({'error': 'Tipo de archivo no permitido. Use .xlsx, .xls o .csv'}), 400
 
 
 @app.route('/api/validate/full', methods=['POST'])

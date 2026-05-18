@@ -188,7 +188,7 @@ export default function Dashboard() {
           <div className="space-y-3">
             {[
               { n: 1, title: 'Configurar validaciones', desc: 'Selecciona y personaliza las validaciones en la sección inferior' },
-              { n: 2, title: 'Subir archivo ENVISTA', desc: 'Arrastra tu archivo .xlsx al área de carga' },
+              { n: 2, title: 'Subir archivo ENVISTA', desc: 'Arrastra tu archivo .xlsx o .csv al área de carga' },
               { n: 3, title: 'Descargar resultados', desc: 'Obtén el Excel con datos validados y reportes' },
             ].map(({ n, title, desc }) => (
               <div key={n} className="flex items-start gap-3">
@@ -533,7 +533,7 @@ export default function Dashboard() {
         <div>
           <h2 className="text-lg font-semibold text-slate-800 mb-1">📁 Subir Archivo</h2>
           <p className="text-sm text-slate-500">
-            Carga un archivo ENVISTA (.xlsx) o un BD ya procesado. Se aplicarán las validaciones seleccionadas arriba.
+            Carga un archivo ENVISTA (.xlsx o .csv) o un BD ya procesado. Se aplicarán las validaciones seleccionadas arriba.
           </p>
         </div>
 

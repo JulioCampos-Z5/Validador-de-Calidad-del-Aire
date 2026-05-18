@@ -58,6 +58,7 @@ const Charts = () => {
     accept: {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
       'application/vnd.ms-excel': ['.xls'],
+      'text/csv': ['.csv'],
     },
     multiple: false,
   });
@@ -148,10 +149,10 @@ const Charts = () => {
                   {isDragActive
                     ? 'Suelta el archivo aquí...'
                     : fileMode === 'envista'
-                      ? 'Arrastra un archivo ENVISTA (.xlsx) o haz clic para seleccionar'
-                      : 'Arrastra el Excel validado (.xlsx) o haz clic para seleccionar'}
+                      ? 'Arrastra un archivo ENVISTA (.xlsx o .csv) o haz clic para seleccionar'
+                      : 'Arrastra el Excel/CSV validado o haz clic para seleccionar'}
                 </p>
-                <p className="text-sm text-gray-500">Soporta archivos .xlsx</p>
+                <p className="text-sm text-gray-500">Soporta archivos .xlsx, .xls y .csv</p>
               </>
             )}
           </div>
