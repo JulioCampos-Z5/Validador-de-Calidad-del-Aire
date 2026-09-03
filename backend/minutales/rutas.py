@@ -13,6 +13,7 @@ import json
 import os
 import tempfile
 import threading
+import traceback
 from datetime import datetime
 
 import pandas as pd
@@ -96,6 +97,10 @@ def descargar():
                 al_avanzar=_anotar_avance,
             )
     except Exception as e:
+        # La traza va al log del servidor y al cliente solo el mensaje: sin esto
+        # un 500 en el navegador no dice nada de donde reventó, y se acaba
+        # persiguiendo el error a ciegas.
+        traceback.print_exc()
         return jsonify({'error': f'Falló la descarga: {e}'}), 502
     finally:
         _progreso['activo'] = False
@@ -115,6 +120,7 @@ def descargar():
         df_validado = validar_datos_completo(df, config)
         resumen_banderas, _detallado, estadisticas, stats_detalladas = crear_resumen_validacion(df_validado)
     except Exception as e:
+        traceback.print_exc()
         return jsonify({'error': f'Error durante la validación: {e}'}), 500
 
     # Mismo Excel y mismo nombre que produce el flujo de archivo, para que el

@@ -1007,9 +1007,19 @@ if __name__ == '__main__':
     print(f"Servidor iniciando en http://localhost:8000")
     print("="*60 + "\n")
     
-    # debug=True expone el depurador de Werkzeug, que permite ejecutar codigo
-    # arbitrario desde el navegador; en 0.0.0.0 quedaba accesible a toda la red.
-    # Se puede reactivar con VALIDADOR_DEBUG=1 para desarrollo local.
+    # `debug=True` de Flask junta dos cosas que conviene separar: el depurador
+    # interactivo de Werkzeug y la recarga automatica al cambiar un archivo.
+    #
+    # El depurador permite ejecutar codigo arbitrario desde el navegador, y
+    # estando en 0.0.0.0 quedaba expuesto a toda la red: eso se apaga.
+    # La recarga, en cambio, no tiene riesgo y hace falta en desarrollo; sin
+    # ella es facil quedarse con el servidor sirviendo codigo viejo y perseguir
+    # errores que ya estan corregidos en disco.
     depurar = os.environ.get('VALIDADOR_DEBUG') == '1'
     host = os.environ.get('VALIDADOR_HOST', '127.0.0.1')
-    app.run(debug=depurar, host=host, port=8000)
+    recargar = os.environ.get('VALIDADOR_SIN_RECARGA') != '1'
+
+    print(f"Escuchando en {host}:8000  |  depurador: {'ON' if depurar else 'off'}"
+          f"  |  recarga automatica: {'ON' if recargar else 'off'}\n")
+
+    app.run(debug=depurar, use_reloader=recargar, host=host, port=8000)
