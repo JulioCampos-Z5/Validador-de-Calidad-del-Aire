@@ -20,6 +20,10 @@ warnings.filterwarnings('ignore')
 app = Flask(__name__)
 CORS(app)
 
+# Integracion con los minutales del SIMAJ (blueprint aparte, ver minutales/).
+from minutales.rutas import bp as bp_minutales
+app.register_blueprint(bp_minutales)
+
 # Configuración
 UPLOAD_FOLDER = tempfile.mkdtemp()
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
@@ -422,6 +426,23 @@ def convertir_a_formato_base(df_envista):
         return pd.DataFrame()
 
 
+def _asegurar_columna_de_banderas(df, columna):
+    """Convertir la columna a object antes de escribirle una bandera de texto.
+
+    Las validaciones sustituyen el valor por su bandera ('IR', 'IO', 'DS') en la
+    misma columna. Si la columna llegó como float64 —lo que pasa cuando los
+    datos vienen limpios, por ejemplo desde los minutales— pandas 3 rechaza la
+    escritura con "Invalid value 'IR' for dtype 'float64'" en vez de convertir
+    el tipo en silencio como hacían las versiones antiguas.
+
+    Con archivos de ENVISTA no se notaba porque ahí las columnas ya vienen
+    mezcladas con texto y son object desde el inicio; era un fallo latente que
+    esperaba a la primera fuente de datos bien tipada.
+    """
+    if columna in df.columns and df[columna].dtype != object:
+        df[columna] = df[columna].astype(object)
+
+
 def validar_rangos(df, rangos_config=None):
     """Validar datos por rangos establecidos"""
     if rangos_config is None:
@@ -438,6 +459,7 @@ def validar_rangos(df, rangos_config=None):
             
             mask_fuera = mask_numerico & ((valores_num < config['min']) | (valores_num > config['max']))
             if mask_fuera.sum() > 0:
+                _asegurar_columna_de_banderas(df_validado, parametro)
                 df_validado.loc[mask_fuera, parametro] = 'IR'
             
             if 'limite_deteccion' in config and config['limite_deteccion'] is not None:
@@ -468,6 +490,7 @@ def validar_temperatura_interna(df, temp_min=20, temp_max=30):
             mask_invalidar = mask_temp_invalida & mask_datos
             
             if mask_invalidar.sum() > 0:
+                _asegurar_columna_de_banderas(df_validado, contaminante)
                 df_validado.loc[mask_invalidar, contaminante] = 'IO'
     
     return df_validado
@@ -527,6 +550,7 @@ def validar_series_temporales(df, opciones=None):
                     for grupo in grupos_largos:
                         mask_grupo = (grupos_constantes == grupo) & valores.notna()
                         indices_originales = df_estacion.loc[mask_grupo, 'index']
+                        _asegurar_columna_de_banderas(df_validado, param)
                         df_validado.loc[indices_originales, param] = 'DS'
 
         # Relación NOX ≈ NO + NO2 (tolerancia relativa simétrica)
@@ -546,6 +570,7 @@ def validar_series_temporales(df, opciones=None):
                 if mask_fuera_rango.sum() > 0:
                     indices_originales = df_estacion.loc[mask_fuera_rango, 'index']
                     for param in ['NO', 'NO2', 'NOX']:
+                        _asegurar_columna_de_banderas(df_validado, param)
                         df_validado.loc[indices_originales, param] = 'IO'
 
         # Relación PM2.5/PM10
@@ -562,6 +587,7 @@ def validar_series_temporales(df, opciones=None):
                 if mask_fuera_rango.sum() > 0:
                     indices_originales = df_estacion.loc[mask_fuera_rango, 'index']
                     for param in ['PM2.5', 'PM10']:
+                        _asegurar_columna_de_banderas(df_validado, param)
                         df_validado.loc[indices_originales, param] = 'IO'
 
     df_validado = df_validado.drop('datetime_temp', axis=1)
@@ -947,6 +973,33 @@ def preview_validated():
         return jsonify({'error': f'Error al leer archivo validado: {str(e)}'}), 500
 
 
+
+# ============================================================================
+# FRONTEND EMPAQUETADO (app de escritorio)
+# ============================================================================
+# En desarrollo el frontend corre en Vite con un proxy hacia /api. En la app de
+# escritorio no hay Vite, asi que Flask sirve tambien el HTML ya compilado. La
+# ventaja de servirlo desde aqui en vez de abrirlo como file:// es que asi la
+# pagina y la API comparten origen: las llamadas a /api funcionan tal cual y no
+# hay que tocar CORS ni reescribir rutas.
+
+FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'dist')
+
+
+@app.route('/', defaults={'ruta': ''})
+@app.route('/<path:ruta>')
+def servir_frontend(ruta):
+    if not os.path.isdir(FRONTEND_DIST):
+        return jsonify({'error': 'Frontend no compilado. Ejecuta: npm --prefix frontend run build'}), 404
+
+    archivo = os.path.join(FRONTEND_DIST, ruta)
+    if ruta and os.path.isfile(archivo):
+        return send_file(archivo)
+    # Cualquier otra ruta devuelve index.html: el enrutado es del lado del
+    # cliente (react-router), asi que /minutales no es un archivo en disco.
+    return send_file(os.path.join(FRONTEND_DIST, 'index.html'))
+
+
 if __name__ == '__main__':
     print("\n" + "="*60)
     print("API DE VALIDACIÓN DE CALIDAD DEL AIRE")
@@ -954,4 +1007,9 @@ if __name__ == '__main__':
     print(f"Servidor iniciando en http://localhost:8000")
     print("="*60 + "\n")
     
-    app.run(debug=True, host='0.0.0.0', port=8000)
+    # debug=True expone el depurador de Werkzeug, que permite ejecutar codigo
+    # arbitrario desde el navegador; en 0.0.0.0 quedaba accesible a toda la red.
+    # Se puede reactivar con VALIDADOR_DEBUG=1 para desarrollo local.
+    depurar = os.environ.get('VALIDADOR_DEBUG') == '1'
+    host = os.environ.get('VALIDADOR_HOST', '127.0.0.1')
+    app.run(debug=depurar, host=host, port=8000)

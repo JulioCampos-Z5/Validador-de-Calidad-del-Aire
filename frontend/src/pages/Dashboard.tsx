@@ -17,6 +17,10 @@ import StatCard from '../components/StatCard';
 import FileUpload from '../components/FileUpload';
 import DataTable from '../components/DataTable';
 import apiService, { HealthResponse, ValidationResponse } from '../services/api';
+import FuenteSimaj from '../components/FuenteSimaj';
+import TarjetaMir from '../components/TarjetaMir';
+import ReporteFallas from '../components/ReporteFallas';
+import { CONTAMINANTES_CRITERIO, minutalesApi, type Mir, type Falla } from '../services/minutales';
 
 // Rangos por defecto (deben coincidir con el backend)
 const DEFAULT_RANGOS: Record<string, { min: number; max: number }> = {
@@ -64,6 +68,12 @@ export default function Dashboard() {
   const [validationResult, setValidationResult] = useState<ValidationResponse | null>(null);
   const [revalidate, setRevalidate] = useState(true);
 
+  // El MIR solo existe cuando los datos vienen del SIMAJ: necesita saber cuantas
+  // horas DEBERIA haber en el periodo, y un Trs.xlsx no lo dice.
+  const [mir, setMir] = useState<Mir | null>(null);
+  const [fallas, setFallas] = useState<Falla[]>([]);
+  const [contaminantesMir, setContaminantesMir] = useState<string[]>(CONTAMINANTES_CRITERIO);
+
   const [validationConfig, setValidationConfig] = useState<ValidationConfig>({
     rangos: true,
     temperatura: true,
@@ -105,6 +115,8 @@ export default function Dashboard() {
     setError(null);
     setSuccess(null);
     setValidationResult(null);
+    setMir(null);
+    setFallas([]);
 
     try {
       const uploadResponse = await apiService.uploadFile(file);
@@ -127,6 +139,35 @@ export default function Dashboard() {
       setError(err.response?.data?.error || 'Error al procesar el archivo');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  /**
+   * Resultado de la descarga del SIMAJ.
+   *
+   * Cae en el mismo `validationResult` que el flujo de subir archivo porque el
+   * backend devuelve la misma forma; por eso el resto del tablero funciona sin
+   * cambios. Lo unico adicional son el MIR y las fallas.
+   */
+  const handleSimaj = (r: any) => {
+    setValidationResult(r);
+    setMir(r.mir ?? null);
+    setFallas(r.fallas ?? []);
+    setError(null);
+    setSuccess(
+      `Descargados del SIMAJ ${r.summary.total_registros.toLocaleString()} registros ` +
+      `de ${r.summary.estaciones} estaciones (${r.summary.fecha_inicio} a ${r.summary.fecha_fin}).`
+    );
+  };
+
+  const cambiarContaminantesMir = async (nuevos: string[]) => {
+    setContaminantesMir(nuevos);
+    try {
+      const r = await minutalesApi.recalcularMir(nuevos);
+      setMir(r.mir);
+      setFallas(r.fallas);
+    } catch {
+      setError('No se pudo recalcular el indicador MIR.');
     }
   };
 
@@ -561,9 +602,29 @@ export default function Dashboard() {
           error={error}
           success={success}
         />
+
+        <div className="mt-4">
+          <FuenteSimaj
+            onResultado={handleSimaj}
+            onError={setError}
+            deshabilitado={isLoading}
+            config={buildBackendConfig()}
+          />
+        </div>
       </div>
 
       {/* ─── RESULTADOS ─── */}
+      {mir && (
+        <div className="space-y-5 mb-6">
+          <TarjetaMir
+            mir={mir}
+            contaminantes={contaminantesMir}
+            onCambiarContaminantes={cambiarContaminantesMir}
+          />
+          <ReporteFallas fallas={fallas} />
+        </div>
+      )}
+
       {validationResult && (
         <div className="space-y-6">
           <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">

@@ -1,0 +1,38 @@
+{
+  "name": "validador-escritorio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "App de escritorio del Validador de Calidad del Aire",
+  "main": "main.mjs",
+  "scripts": {
+    "dev": "npm --prefix ../frontend run build && electron .",
+    "exe": "npm --prefix ../frontend run build && electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "gob.jalisco.simaj.validador",
+    "productName": "Validador Calidad del Aire",
+    "directories": { "output": "../salida" },
+    "files": ["main.mjs", "package.json"],
+    "extraResources": [
+      { "from": "../backend", "to": "backend", "filter": ["**/*", "!__pycache__/**", "!**/*.pyc"] },
+      { "from": "../frontend/dist", "to": "frontend/dist" }
+    ],
+    "win": {
+      "target": [
+        { "target": "portable", "arch": ["x64"] },
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "portable": { "artifactName": "Validador-portable.exe" },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Validador-instalador.exe"
+    }
+  }
+}

@@ -5,6 +5,7 @@ import apiService from '../services/api';
 import LineCharts from '../components/LineCharts';
 import StatCharts from '../components/StatCharts';
 import CalendarHeatmaps from '../components/CalendarHeatmaps';
+import FuenteSimaj from '../components/FuenteSimaj';
 
 interface DataPoint {
   STATION: string;
@@ -51,6 +52,20 @@ const Charts = () => {
       setError(err.response?.data?.error || 'Error al procesar el archivo');
     } finally {
       setLoading(false);
+    }
+  };
+
+  /**
+   * Las graficas consumen `data_preview`, y la descarga del SIMAJ devuelve ese
+   * mismo campo con la misma forma. Por eso aqui no hay que convertir nada.
+   */
+  const onSimaj = (r: any) => {
+    if (r?.data_preview) {
+      setData(r.data_preview as DataPoint[]);
+      setFilename(`SIMAJ ${r.summary.fecha_inicio} a ${r.summary.fecha_fin}`);
+      setError(null);
+    } else {
+      setError('La descarga no devolvio datos.');
     }
   };
 
@@ -156,6 +171,10 @@ const Charts = () => {
                 <p className="text-sm text-gray-500">Soporta archivos .xlsx, .xls y .csv</p>
               </>
             )}
+          </div>
+
+          <div className="mt-4">
+            <FuenteSimaj onResultado={onSimaj} onError={setError} deshabilitado={loading} config={{}} />
           </div>
         </div>
       )}

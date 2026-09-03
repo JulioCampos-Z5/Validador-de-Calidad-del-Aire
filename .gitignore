@@ -70,3 +70,7 @@ coverage/
 *.log
 *.tmp
 *.temp
+node_modules/
+dist/
+salida/
+__pycache__/
