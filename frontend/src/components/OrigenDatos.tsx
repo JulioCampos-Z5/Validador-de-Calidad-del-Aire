@@ -14,10 +14,11 @@ import { minutalesApi, type Progreso } from '../services/minutales';
  * entero, no de una pantalla: se carga una vez y tanto el tablero como las
  * gráficas leen lo mismo.
  *
- * Es un único acordeón con dos grupos. Cada grupo se titula con la frase que
- * completa lo que hay debajo —"Cargar datos de: Archivo ENVISTA"— porque un
- * rótulo suelto como "Origen" o "Exportar" obliga a adivinar qué hace cada
- * botón.
+ * Es un único acordeón, y cada botón enuncia la acción entera —"Cargar datos de
+ * un archivo ENVISTA"— en vez de apoyarse en un rótulo de sección. Un nombre
+ * suelto como "Archivo ENVISTA" bajo un título "Origen" obliga a relacionar dos
+ * cosas separadas para entender qué hace el botón; dicho completo, se entiende
+ * mirando solo el botón.
  */
 
 const ORIGENES: {
@@ -28,34 +29,30 @@ const ORIGENES: {
 }[] = [
   {
     id: 'envista',
-    etiqueta: 'Un archivo ENVISTA',
+    etiqueta: 'Cargar datos de un archivo ENVISTA',
     detalle: 'Trs.xlsx o .csv crudo. Se convierte y se valida.',
     icono: FileSpreadsheet,
   },
   {
     id: 'validado',
-    etiqueta: 'Un archivo ya validado',
+    etiqueta: 'Cargar datos de un archivo ya validado',
     detalle: 'BD_{año}.xlsx o .csv procesado. Solo se muestra.',
     icono: FileCheck2,
   },
   {
     id: 'simaj',
-    etiqueta: 'La conexión al SIMAJ',
+    etiqueta: 'Cargar datos de la conexión al SIMAJ',
     detalle: 'Descarga directa de las 13 estaciones.',
     icono: DownloadCloud,
   },
 ];
 
-/** Rótulo de grupo dentro del acordeón. */
-function Grupo({ titulo, children }: { titulo: string; children: React.ReactNode }) {
-  return (
-    <div className="mt-1 first:mt-0">
-      <p className="px-2.5 pt-2 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
-        {titulo}
-      </p>
-      <div className="space-y-1">{children}</div>
-    </div>
-  );
+/**
+ * Agrupa filas sin rótulo encima: cada botón dice ya la acción completa
+ * ("Cargar datos de un archivo ENVISTA"), así que un título repetiría lo mismo.
+ */
+function Grupo({ children }: { children: React.ReactNode }) {
+  return <div className="space-y-1 mt-1 first:mt-0">{children}</div>;
 }
 
 /** Fila con icono, nombre y explicación. La usan la carga y la exportación. */
@@ -176,7 +173,7 @@ export default function OrigenDatos() {
             className="hidden"
           />
 
-          <Grupo titulo="Cargar datos de">
+          <Grupo>
             {ORIGENES.map(({ id, etiqueta, detalle, icono }) => (
               <Fila
                 key={id}
@@ -261,14 +258,14 @@ export default function OrigenDatos() {
           )}
 
           {resultado && !cargando && (
-            <Grupo titulo="Exportando datos de">
+            <Grupo>
               {resultado.output_filename && (
                 <Fila
                   as="enlace"
                   href={apiService.downloadFile(resultado.output_filename)}
                   icono={FileDown}
-                  etiqueta="La validación completa"
-                  detalle="Excel con los datos, las banderas aplicadas y los resúmenes."
+                  etiqueta="Exportando datos de la validación completa"
+                  detalle="Excel con datos, banderas y resúmenes."
                 />
               )}
 
@@ -279,8 +276,8 @@ export default function OrigenDatos() {
                   as="enlace"
                   href={minutalesApi.urlReporteCsv(contaminantesMir)}
                   icono={Table2}
-                  etiqueta="El indicador MIR"
-                  detalle="CSV con la cobertura por estación y el criterio de cumplimiento."
+                  etiqueta="Exportando datos del indicador MIR"
+                  detalle="CSV con cobertura por estación y cumplimiento."
                 />
               )}
             </Grupo>
