@@ -25,7 +25,18 @@ from minutales.rutas import bp as bp_minutales
 app.register_blueprint(bp_minutales)
 
 # Configuración
-UPLOAD_FOLDER = tempfile.mkdtemp()
+# Carpeta de trabajo para archivos subidos y Excel generados.
+#
+# Antes era tempfile.mkdtemp(), que crea una carpeta ALEATORIA por proceso. Con
+# el recargador activo hay parent y child, y cada reinicio arranca otro proceso
+# con otra carpeta: el Excel escrito antes del reinicio quedaba inalcanzable y
+# su descarga devolvia 404 pese a existir en disco. Ademas se acumulaban
+# decenas de carpetas huerfanas.
+#
+# Una ruta estable sobrevive a los reinicios y deja los archivos donde el
+# siguiente proceso sabe buscarlos.
+UPLOAD_FOLDER = os.path.join(tempfile.gettempdir(), 'validador_calidad_aire')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max

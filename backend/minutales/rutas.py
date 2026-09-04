@@ -129,7 +129,14 @@ def descargar():
     anio = int(anio.iloc[0]) if not anio.empty else datetime.now().year
     marca = datetime.now().strftime('%Y%m%d_%H%M%S')
     salida = f'BD_{anio}_{marca}.xlsx'
-    exportar_resultados(df_validado, os.path.join(flask_app.config['UPLOAD_FOLDER'], salida))
+    ruta_salida = os.path.join(flask_app.config['UPLOAD_FOLDER'], salida)
+    exportar_resultados(df_validado, ruta_salida)
+
+    # exportar_resultados atrapa sus propias excepciones y devuelve None sin
+    # avisar, asi que hay que comprobar el archivo: sin esto se ofreceria una
+    # descarga de algo que nunca se escribio.
+    if not os.path.exists(ruta_salida):
+        salida = None
 
     return jsonify({
         'success': True,
