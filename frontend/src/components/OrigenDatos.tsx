@@ -14,11 +14,11 @@ import { minutalesApi, type Progreso } from '../services/minutales';
  * entero, no de una pantalla: se carga una vez y tanto el tablero como las
  * gráficas leen lo mismo.
  *
- * Es un único acordeón, y cada botón enuncia la acción entera —"Cargar datos de
- * un archivo ENVISTA"— en vez de apoyarse en un rótulo de sección. Un nombre
- * suelto como "Archivo ENVISTA" bajo un título "Origen" obliga a relacionar dos
- * cosas separadas para entender qué hace el botón; dicho completo, se entiende
- * mirando solo el botón.
+ * Es un único acordeón y cada botón cabe en una línea: el verbo va en la propia
+ * etiqueta ("Importar archivo ENVISTA") en vez de en un rótulo de sección
+ * aparte. La explicación de cada opción vive en el tooltip, no debajo del
+ * botón: en una barra de 256 px, tres líneas por opción convertían el menú en
+ * un muro de texto.
  */
 
 const ORIGENES: {
@@ -29,33 +29,30 @@ const ORIGENES: {
 }[] = [
   {
     id: 'envista',
-    etiqueta: 'Cargar datos de un archivo ENVISTA',
+    etiqueta: 'Importar archivo ENVISTA',
     detalle: 'Trs.xlsx o .csv crudo. Se convierte y se valida.',
     icono: FileSpreadsheet,
   },
   {
     id: 'validado',
-    etiqueta: 'Cargar datos de un archivo ya validado',
+    etiqueta: 'Importar archivo validado',
     detalle: 'BD_{año}.xlsx o .csv procesado. Solo se muestra.',
     icono: FileCheck2,
   },
   {
     id: 'simaj',
-    etiqueta: 'Cargar datos de la conexión al SIMAJ',
+    etiqueta: 'Importar del SIMAJ',
     detalle: 'Descarga directa de las 13 estaciones.',
     icono: DownloadCloud,
   },
 ];
 
-/**
- * Agrupa filas sin rótulo encima: cada botón dice ya la acción completa
- * ("Cargar datos de un archivo ENVISTA"), así que un título repetiría lo mismo.
- */
+/** Agrupa filas sin rótulo encima: la etiqueta de cada botón ya dice la acción. */
 function Grupo({ children }: { children: React.ReactNode }) {
   return <div className="space-y-1 mt-1 first:mt-0">{children}</div>;
 }
 
-/** Fila con icono, nombre y explicación. La usan la carga y la exportación. */
+/** Fila de una línea. `detalle` no se pinta: va al tooltip del botón. */
 function Fila({
   icono: Icono, etiqueta, detalle, activo, ...resto
 }: {
@@ -67,16 +64,13 @@ function Fila({
   | ({ as: 'boton' } & React.ButtonHTMLAttributes<HTMLButtonElement>)
   | ({ as: 'enlace' } & React.AnchorHTMLAttributes<HTMLAnchorElement>)
 )) {
-  const clases = `w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors disabled:opacity-50 ${
+  const clases = `w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors disabled:opacity-50 ${
     activo ? 'bg-primary-50 text-primary-700' : 'text-slate-600 hover:bg-slate-100'
   }`;
   const contenido = (
     <>
-      <Icono size={17} className="mt-0.5 shrink-0" />
-      <span className="min-w-0">
-        <span className="block text-sm font-medium leading-tight">{etiqueta}</span>
-        <span className="block text-[11px] text-slate-400 leading-snug mt-0.5">{detalle}</span>
-      </span>
+      <Icono size={17} className="shrink-0" />
+      <span className="text-sm font-medium leading-tight min-w-0">{etiqueta}</span>
     </>
   );
 
@@ -264,7 +258,7 @@ export default function OrigenDatos() {
                   as="enlace"
                   href={apiService.downloadFile(resultado.output_filename)}
                   icono={FileDown}
-                  etiqueta="Exportando datos de la validación completa"
+                  etiqueta="Exportar validación"
                   detalle="Excel con datos, banderas y resúmenes."
                 />
               )}
@@ -276,7 +270,7 @@ export default function OrigenDatos() {
                   as="enlace"
                   href={minutalesApi.urlReporteCsv(contaminantesMir)}
                   icono={Table2}
-                  etiqueta="Exportando datos del indicador MIR"
+                  etiqueta="Exportar reporte MIR"
                   detalle="CSV con cobertura por estación y cumplimiento."
                 />
               )}
