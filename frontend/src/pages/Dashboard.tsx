@@ -16,11 +16,10 @@ import {
 import StatCard from '../components/StatCard';
 import FileUpload from '../components/FileUpload';
 import DataTable from '../components/DataTable';
-import apiService, { HealthResponse, ValidationResponse } from '../services/api';
-import FuenteSimaj from '../components/FuenteSimaj';
+import apiService, { HealthResponse } from '../services/api';
 import TarjetaMir from '../components/TarjetaMir';
 import ReporteFallas from '../components/ReporteFallas';
-import { CONTAMINANTES_CRITERIO, minutalesApi, type Mir, type Falla } from '../services/minutales';
+import { useDatos } from '../estado/DatosContexto';
 
 // Rangos por defecto (deben coincidir con el backend)
 const DEFAULT_RANGOS: Record<string, { min: number; max: number }> = {
@@ -43,50 +42,24 @@ const DEFAULT_RANGOS: Record<string, { min: number; max: number }> = {
   UVI:   { min: 0,      max: 300   },
 };
 
-interface ValidationConfig {
-  rangos: boolean;
-  temperatura: boolean;
-  series: boolean;
-  series_constantes: boolean;
-  series_nox: boolean;
-  series_pm: boolean;
-  nox_tolerance: number;
-  pm_tolerance: number;
-  rangos_custom: Record<string, { min: number; max: number }>;
-  temp_min: number;
-  temp_max: number;
-}
+// La configuracion de validacion vive en DatosContexto (ConfigValidacion):
+// la comparten el editor de parametros y los tres origenes de datos.
 
 export default function Dashboard() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [loadingHealth, setLoadingHealth] = useState(true);
 
-  // Upload + validación
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [validationResult, setValidationResult] = useState<ValidationResponse | null>(null);
-  const [revalidate, setRevalidate] = useState(true);
+  // Los datos y la configuracion viven en el contexto, no aqui: si se guardaran
+  // en esta pagina, ir a Graficas y volver los perderia y habria que cargarlos
+  // otra vez.
+  const {
+    resultado: validationResult, mir, fallas, contaminantesMir,
+    cargando: isLoading, error, exito: success,
+    revalidar: revalidate, setRevalidar: setRevalidate,
+    config: validationConfig, setConfig: setValidationConfig,
+    cambiarContaminantesMir, cargarArchivo,
+  } = useDatos();
 
-  // El MIR solo existe cuando los datos vienen del SIMAJ: necesita saber cuantas
-  // horas DEBERIA haber en el periodo, y un Trs.xlsx no lo dice.
-  const [mir, setMir] = useState<Mir | null>(null);
-  const [fallas, setFallas] = useState<Falla[]>([]);
-  const [contaminantesMir, setContaminantesMir] = useState<string[]>(CONTAMINANTES_CRITERIO);
-
-  const [validationConfig, setValidationConfig] = useState<ValidationConfig>({
-    rangos: true,
-    temperatura: true,
-    series: true,
-    series_constantes: true,
-    series_nox: true,
-    series_pm: true,
-    nox_tolerance: 0.10,
-    pm_tolerance: 0.15,
-    rangos_custom: { ...DEFAULT_RANGOS },
-    temp_min: 20,
-    temp_max: 30,
-  });
   const [editingSection, setEditingSection] = useState<'rangos' | 'temperatura' | 'series' | null>(null);
 
   useEffect(() => {
@@ -96,80 +69,12 @@ export default function Dashboard() {
       .finally(() => setLoadingHealth(false));
   }, []);
 
-  const buildBackendConfig = () => ({
-    rangos: validationConfig.rangos,
-    temperatura: validationConfig.temperatura,
-    series: validationConfig.series,
-    series_constantes: validationConfig.series_constantes,
-    series_nox: validationConfig.series_nox,
-    series_pm: validationConfig.series_pm,
-    nox_tolerance: validationConfig.nox_tolerance,
-    pm_tolerance: validationConfig.pm_tolerance,
-    rangos_custom: validationConfig.rangos ? validationConfig.rangos_custom : undefined,
-    temp_min: validationConfig.temp_min,
-    temp_max: validationConfig.temp_max,
-  });
-
-  const handleFileUpload = async (file: File) => {
-    setIsLoading(true);
-    setError(null);
-    setSuccess(null);
-    setValidationResult(null);
-    setMir(null);
-    setFallas([]);
-
-    try {
-      const uploadResponse = await apiService.uploadFile(file);
-      const validationResponse = await apiService.validateFull(
-        uploadResponse.filename,
-        buildBackendConfig(),
-        revalidate
-      );
-
-      setValidationResult(validationResponse);
-      const formatoMsg = validationResponse.file_format === 'bd_procesado'
-        ? validationResponse.revalidated
-          ? ' (archivo ya procesado: re-validado)'
-          : ' (archivo ya procesado: solo previsualización)'
-        : '';
-      setSuccess(
-        `Archivo procesado exitosamente${formatoMsg}. ${validationResponse.summary.total_registros.toLocaleString()} registros.`
-      );
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Error al procesar el archivo');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   /**
-   * Resultado de la descarga del SIMAJ.
-   *
-   * Cae en el mismo `validationResult` que el flujo de subir archivo porque el
-   * backend devuelve la misma forma; por eso el resto del tablero funciona sin
-   * cambios. Lo unico adicional son el MIR y las fallas.
+   * Subir un archivo desde el area central sigue funcionando; delega en el
+   * contexto para que el resultado sea el mismo que si se hubiera elegido el
+   * origen en el menu.
    */
-  const handleSimaj = (r: any) => {
-    setValidationResult(r);
-    setMir(r.mir ?? null);
-    setFallas(r.fallas ?? []);
-    setError(null);
-    setSuccess(
-      `Descargados del SIMAJ ${r.summary.total_registros.toLocaleString()} registros ` +
-      `de ${r.summary.estaciones} estaciones (${r.summary.fecha_inicio} a ${r.summary.fecha_fin}).`
-    );
-  };
-
-  const cambiarContaminantesMir = async (nuevos: string[]) => {
-    setContaminantesMir(nuevos);
-    try {
-      const r = await minutalesApi.recalcularMir(nuevos);
-      setMir(r.mir);
-      setFallas(r.fallas);
-    } catch {
-      setError('No se pudo recalcular el indicador MIR.');
-    }
-  };
+  const handleFileUpload = (file: File) => cargarArchivo(file, 'envista');
 
   const handleDownload = () => {
     if (validationResult?.output_filename) {
@@ -603,14 +508,10 @@ export default function Dashboard() {
           success={success}
         />
 
-        <div className="mt-4">
-          <FuenteSimaj
-            onResultado={handleSimaj}
-            onError={setError}
-            deshabilitado={isLoading}
-            config={buildBackendConfig()}
-          />
-        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          También puedes elegir el origen —archivo ENVISTA, archivo ya validado o
+          conexión SIMAJ— en el menú de la izquierda.
+        </p>
       </div>
 
       {/* ─── RESULTADOS ─── */}

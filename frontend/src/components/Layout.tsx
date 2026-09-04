@@ -9,6 +9,7 @@ import {
   BarChart3
 } from 'lucide-react';
 import { useState } from 'react';
+import OrigenDatos from './OrigenDatos';
 
 interface LayoutProps {
   children: ReactNode;
@@ -61,6 +62,7 @@ export default function Layout({ children }: LayoutProps) {
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         } ${isCharts ? '' : 'lg:translate-x-0'}`}
       >
+        <div className="h-full overflow-y-auto pb-4">
         <nav className="p-4 space-y-2">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -83,6 +85,9 @@ export default function Layout({ children }: LayoutProps) {
             );
           })}
         </nav>
+
+        <OrigenDatos />
+        </div>
 
         {/* Info Box */}
         <div className="hidden absolute bottom-4 left-4 right-4">

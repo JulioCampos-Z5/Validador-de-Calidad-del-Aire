@@ -1,11 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { BarChart3, Upload, AlertCircle, FileInput } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
-import apiService from '../services/api';
 import LineCharts from '../components/LineCharts';
 import StatCharts from '../components/StatCharts';
 import CalendarHeatmaps from '../components/CalendarHeatmaps';
-import FuenteSimaj from '../components/FuenteSimaj';
+import { useDatos } from '../estado/DatosContexto';
 
 interface DataPoint {
   STATION: string;
@@ -17,56 +16,21 @@ interface DataPoint {
 type FileMode = 'envista' | 'validado';
 
 const Charts = () => {
-  const [data, setData] = useState<DataPoint[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [filename, setFilename] = useState<string | null>(null);
+  // Los datos salen del contexto, no de una carga propia: asi venir del tablero
+  // no obliga a volver a subir el archivo ni a repetir la descarga del SIMAJ.
+  const {
+    resultado, cargando: loading, error, descripcion: filename, cargarArchivo, limpiar,
+  } = useDatos();
+
   const [fileMode, setFileMode] = useState<FileMode>('envista');
 
-  const onDrop = async (acceptedFiles: File[]) => {
-    if (acceptedFiles.length === 0) return;
+  const data = useMemo<DataPoint[]>(
+    () => (resultado?.data_preview as DataPoint[] | undefined) ?? [],
+    [resultado],
+  );
 
-    const file = acceptedFiles[0];
-    setLoading(true);
-    setError(null);
-
-    try {
-      const uploadResult = await apiService.uploadFile(file);
-      setFilename(uploadResult.filename);
-
-      let result;
-      if (fileMode === 'validado') {
-        // Leer la hoja "Datos_Validados" sin aplicar validaciones
-        result = await apiService.previewValidated(uploadResult.filename);
-      } else {
-        // Archivo ENVISTA: procesar y validar
-        result = await apiService.validateFull(uploadResult.filename);
-      }
-
-      if (result.success && result.data_preview) {
-        setData(result.data_preview as DataPoint[]);
-      } else {
-        setError('No se pudieron obtener los datos del archivo');
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Error al procesar el archivo');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /**
-   * Las graficas consumen `data_preview`, y la descarga del SIMAJ devuelve ese
-   * mismo campo con la misma forma. Por eso aqui no hay que convertir nada.
-   */
-  const onSimaj = (r: any) => {
-    if (r?.data_preview) {
-      setData(r.data_preview as DataPoint[]);
-      setFilename(`SIMAJ ${r.summary.fecha_inicio} a ${r.summary.fecha_fin}`);
-      setError(null);
-    } else {
-      setError('La descarga no devolvio datos.');
-    }
+  const onDrop = (acceptedFiles: File[]) => {
+    if (acceptedFiles.length > 0) cargarArchivo(acceptedFiles[0], fileMode);
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -79,7 +43,9 @@ const Charts = () => {
     multiple: false,
   });
 
-  const resetData = () => { setData([]); setFilename(null); setError(null); };
+  // Descarta el conjunto compartido; el menu lateral queda listo para
+  // elegir otro origen.
+  const resetData = limpiar;
 
   return (
     <div className="space-y-6">
@@ -173,9 +139,9 @@ const Charts = () => {
             )}
           </div>
 
-          <div className="mt-4">
-            <FuenteSimaj onResultado={onSimaj} onError={setError} deshabilitado={loading} config={{}} />
-          </div>
+          <p className="mt-4 text-sm text-gray-500 text-center">
+            O elige el origen —incluida la conexión SIMAJ— en el menú de la izquierda.
+          </p>
         </div>
       )}
 
