@@ -69,8 +69,23 @@ export interface StatsResponse {
   estadisticas_detalladas: any[];
 }
 
+export interface ArchivoApp {
+  nombre: string;
+  etiqueta: string;
+  detalle: string;
+  tamano_mb: number;
+  compilado: string;
+  url: string;
+}
+
 // Servicios
 export const apiService = {
+  /** Ejecutables de la app de escritorio disponibles en este servidor. */
+  appEscritorio: async (): Promise<{ disponible: boolean; archivos: ArchivoApp[] }> => {
+    const response = await api.get('/app-escritorio');
+    return response.data;
+  },
+
   // Health check
   healthCheck: async (): Promise<HealthResponse> => {
     const response = await api.get('/health');

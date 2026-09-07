@@ -75,11 +75,11 @@ export const minutalesApi = {
    * que ya usa el flujo de subir archivo.
    */
   descargar: async (
-    meses: number,
+    periodo: { desde: string; hasta: string },
     contaminantes: string[],
     config?: Record<string, unknown>,
   ): Promise<any> =>
-    (await api.post('/descargar', { meses, contaminantes, config })).data,
+    (await api.post('/descargar', { ...periodo, contaminantes, config })).data,
 
   /** Recalcula el MIR con otra selección sin volver a descargar. */
   recalcularMir: async (

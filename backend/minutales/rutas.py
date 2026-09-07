@@ -84,7 +84,18 @@ def descargar():
     config = cuerpo.get('config') or None
     contaminantes = cuerpo.get('contaminantes') or CONTAMINANTES_CRITERIO
 
-    if meses < 1 or meses > 12:
+    # El periodo llega como rango de fechas desde que el selector es común a
+    # todos los orígenes. `meses` sigue valiendo para quien llame sin fechas.
+    desde = hasta = None
+    if cuerpo.get('desde') and cuerpo.get('hasta'):
+        try:
+            desde = pd.to_datetime(cuerpo['desde']).to_pydatetime()
+            hasta = pd.to_datetime(cuerpo['hasta']).to_pydatetime()
+        except Exception:
+            return jsonify({'error': 'Fechas no reconocidas. Usa AAAA-MM-DD.'}), 400
+        if hasta <= desde:
+            return jsonify({'error': 'La fecha final debe ser posterior a la inicial.'}), 400
+    elif meses < 1 or meses > 12:
         return jsonify({'error': 'meses debe estar entre 1 y 12'}), 400
 
     _progreso.update({'activo': True, 'hechos': 0, 'total': 0})
@@ -92,6 +103,8 @@ def descargar():
         with _candado:
             df = cliente.descargar(
                 meses=meses,
+                desde=desde,
+                hasta=hasta,
                 estaciones_pedidas=estaciones_pedidas,
                 carpeta_cache=CACHE,
                 al_avanzar=_anotar_avance,

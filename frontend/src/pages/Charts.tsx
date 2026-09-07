@@ -140,7 +140,7 @@ const Charts = () => {
           </div>
 
           <p className="mt-4 text-sm text-gray-500 text-center">
-            O elige el origen —incluida la conexión SIMAJ— en el menú de la izquierda.
+            O elige el origen —SIMAJ o API de Emisiones— en el menú de la izquierda.
           </p>
         </div>
       )}

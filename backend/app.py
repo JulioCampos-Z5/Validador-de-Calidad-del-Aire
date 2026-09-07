@@ -24,6 +24,11 @@ CORS(app)
 from minutales.rutas import bp as bp_minutales
 app.register_blueprint(bp_minutales)
 
+# Integracion con la API de Emisiones de Jalisco (ver emisiones/). Tercer origen
+# de datos: requiere iniciar sesion para obtener el token diario.
+from emisiones.rutas import bp as bp_emisiones
+app.register_blueprint(bp_emisiones)
+
 # Configuración
 # Carpeta de trabajo para archivos subidos y Excel generados.
 #
@@ -92,8 +97,8 @@ RANGOS = {
     'NO': {'min': -0.003, 'max': 0.500, 'limite_deteccion': 0.001},
     'NOX': {'min': -0.006, 'max': 0.500, 'limite_deteccion': 0.006},
     'CO': {'min': -0.04, 'max': 50, 'limite_deteccion': 0.04},
-    'PM10': {'min': 0, 'max': 900},
-    'PM2.5': {'min': 0, 'max': 900},
+    'PM10': {'min': 0, 'max': 1000},
+    'PM2.5': {'min': 0, 'max': 1000},
     'ET': {'min': -5, 'max': 50},
     'IT': {'min': 0, 'max': 50},
     'RH': {'min': 0, 'max': 100},
@@ -124,6 +129,12 @@ MAPEO_BANDERAS_ENVISTA = {
     'NoData': 'ND', 'InvId': 'IO', 'Zero': 'IC', 'Span': 'IC',
     'OutCal': 'IC', 'Alarm': 'IF', 'WarmUp': 'IF', 'Maintain': 'IF',
     'Above R': 'IR', 'Below R': 'IR', 'Calm': 'IO', '<Samp': 'IO',
+    # El script escribe 'Invld' (ele) y 'BelowR'/'AboveR' sin espacio. La clave
+    # 'InvId' de arriba lleva i mayuscula y no casaria nunca con 'InvLd'; se
+    # añaden las variantes en vez de sustituirlas porque no hay forma de saber
+    # cual manda ENVISTA sin un Trs.xlsx delante, y sobrar no cuesta nada.
+    'Invld': 'IO', 'InvLd': 'IO', 'Invalid': 'IO',
+    'AboveR': 'IR', 'BelowR': 'IR',
     'OffScan': 'IO', 'NoData ': 'ND', 'OffScan ': 'IO',
     'Above_R': 'IR', 'Below_R': 'IR', '': 'ND', ' ': 'ND',
     'nan': 'ND', 'NaN': 'ND', 'NULL': 'ND', 'null': 'ND'
@@ -507,6 +518,129 @@ def validar_temperatura_interna(df, temp_min=20, temp_max=30):
     return df_validado
 
 
+# ---------------------------------------------------------------------------
+# Verificaciones por serie de tiempo de los parámetros meteorológicos
+#
+# Salen de la tabla "Verificación por serie de tiempo" del script de validación.
+# Todas marcan 'IO' y todas comparten la misma idea: un sensor averiado no deja
+# de dar números, da números plausibles. Un anemómetro trabado reporta 1.3 m/s
+# hora tras hora y pasa cualquier validación por rango; lo que lo delata es que
+# no varía.
+#
+# Por eso la ventana se mide en HORAS DE CALENDARIO y no en filas: si una
+# estación deja de publicar seis horas, las filas de antes y después son
+# contiguas en el DataFrame pero no en el tiempo, y compararlas inventaría una
+# serie plana que nunca existió.
+# ---------------------------------------------------------------------------
+
+# Radiación distinta de cero durante la noche.
+#
+# El script dice "diferente a cero". A cero estricto esto marcaría casi todas
+# las noches: el sensor real de la red reporta 2-4 W/m² de ruido a las 00:00, y
+# tomarlo por medición dejaría el indicador inservible de puro falso positivo.
+# El umbral es por dónde empieza a ser una lectura y no ruido, y es
+# configurable porque es el único número de la tabla que el script no fija.
+UMBRAL_RADIACION_NOCTURNA = {'RS': 5.0, 'UVI': 0.1}
+HORA_NOCHE_INICIO = 22
+HORA_NOCHE_FIN = 5
+
+# (horas de ventana, amplitud máxima para considerarla plana)
+SERIES_PLANAS = {
+    'WS': [(3, 0.1), (12, 0.5)],
+    'WD': [(3, 1.0), (18, 10.0)],
+    'ET': [(12, 0.5)],
+}
+
+# Salto brusco de temperatura externa respecto a la hora anterior, en °C.
+SALTO_ET = 5.0
+
+# Cambio de presión barométrica dentro de una ventana de 3 h, en mmHg.
+#
+# 0.75 es el valor del script, y medido contra un mes de la red marca el 54.6%
+# de las ventanas: la amplitud mediana real en 3 h ya es 0.84 mmHg. Con ese
+# umbral la regla no detecta nada, solo tiñe la columna entera. Por eso la
+# verificación de presión viene DESACTIVADA por defecto: el número es de la
+# especificación y cambiarlo es decisión del área técnica, no mía. Para
+# referencia, sobre los mismos datos: 1.5 mmHg marca el 27%, 3.0 el 14% y
+# 4.0 el 10% (el percentil 90 está en 4.14).
+VENTANA_ATM, SALTO_ATM = 3, 0.75
+
+
+def _amplitud_circular(angulos):
+    """
+    Amplitud de un conjunto de ángulos, respetando que 359° y 1° distan 2°.
+
+    Restar el mínimo del máximo daría 358° para esos dos valores y una veleta
+    trabada apuntando al norte —que oscila entre 359 y 1— parecería estar
+    girando media rosa de los vientos. La amplitud real es 360 menos el hueco
+    más grande entre ángulos consecutivos.
+    """
+    a = np.sort(np.asarray(angulos, dtype=float) % 360)
+    if a.size < 2:
+        return 0.0
+    huecos = np.diff(a)
+    hueco_mayor = max(huecos.max(), 360.0 - (a[-1] - a[0]))
+    return 360.0 - hueco_mayor
+
+
+def _ventanas(marcas, valores, horas):
+    """
+    Recorre las ventanas de `horas` horas de calendario consecutivas y completas.
+
+    Devuelve (posicion_inicio, posicion_fin, valores) de cada ventana que tiene
+    exactamente una lectura por hora y ninguna ausente. Una ventana con huecos
+    no se evalúa: no se puede afirmar que una serie es plana sobre datos que no
+    están.
+    """
+    n = len(marcas)
+    for fin in range(horas - 1, n):
+        ini = fin - horas + 1
+        if (marcas[fin] - marcas[ini]) != pd.Timedelta(hours=horas - 1):
+            continue
+        trozo = valores[ini:fin + 1]
+        if np.isnan(trozo).any():
+            continue
+        yield ini, fin, trozo
+
+
+def _marcar_series_planas(marcas, valores, horas, amplitud_maxima, circular=False):
+    """
+    Posiciones que caen dentro de alguna ventana plana.
+
+    Se marca la ventana ENTERA, no solo su última hora: si un sensor lleva doce
+    horas clavado, las doce son sospechosas, no la duodécima.
+    """
+    marcado = np.zeros(len(marcas), dtype=bool)
+    for ini, fin, trozo in _ventanas(marcas, valores, horas):
+        amplitud = _amplitud_circular(trozo) if circular else (trozo.max() - trozo.min())
+        if amplitud <= amplitud_maxima:
+            marcado[ini:fin + 1] = True
+    return marcado
+
+
+def _marcar_saltos_en_ventana(marcas, valores, horas, salto_maximo):
+    """Lo contrario: ventanas donde el valor se mueve MÁS de lo creíble."""
+    marcado = np.zeros(len(marcas), dtype=bool)
+    for ini, fin, trozo in _ventanas(marcas, valores, horas):
+        if (trozo.max() - trozo.min()) > salto_maximo:
+            marcado[ini:fin + 1] = True
+    return marcado
+
+
+def _marcar_saltos_horarios(marcas, valores, salto_maximo):
+    """Cambio respecto a la hora inmediatamente anterior. Marca ambas horas."""
+    marcado = np.zeros(len(marcas), dtype=bool)
+    for i in range(1, len(marcas)):
+        if (marcas[i] - marcas[i - 1]) != pd.Timedelta(hours=1):
+            continue
+        if np.isnan(valores[i]) or np.isnan(valores[i - 1]):
+            continue
+        if abs(valores[i] - valores[i - 1]) > salto_maximo:
+            marcado[i - 1] = True
+            marcado[i] = True
+    return marcado
+
+
 # Parámetros sujetos a validación de valores constantes > 3 h.
 # SO2 se excluye explícitamente: valores constantes en SO2 son normales en la zona,
 # no implican falla del equipo.
@@ -523,9 +657,14 @@ def validar_series_temporales(df, opciones=None):
     opciones (dict):
       - constantes (bool, True): marca como 'DS' series con el mismo valor por > 3 h.
       - nox (bool, True): marca como 'IO' cuando (NO+NO2)/NOX se desvía > tolerancia.
-      - nox_tolerance (float, 0.10): tolerancia ±relativa para la relación NOx.
+      - nox_tolerance (float, 0.15): tolerancia ±relativa para la relación NOx.
       - pm (bool, True): marca como 'IO' cuando PM2.5/PM10 > 1+pm_tolerance.
       - pm_tolerance (float, 0.15): tolerancia para relación PM2.5/PM10.
+      - radiacion (bool, True): marca 'IO' la radiación distinta de cero de noche.
+      - viento (bool, True): marca 'IO' WS y WD cuando llevan horas sin variar.
+      - temp_externa (bool, True): marca 'IO' saltos > 5 °C y series planas de ET.
+      - presion (bool, False): marca 'IO' cambios > `presion_umbral` en 3 h de ATM.
+      - presion_umbral (float, 0.75): mmHg. Ver la nota de SALTO_ATM.
     """
     if opciones is None:
         opciones = {}
@@ -533,8 +672,15 @@ def validar_series_temporales(df, opciones=None):
     activar_constantes = bool(opciones.get('constantes', True))
     activar_nox = bool(opciones.get('nox', True))
     activar_pm = bool(opciones.get('pm', True))
-    nox_tol = float(opciones.get('nox_tolerance', 0.10))
+    nox_tol = float(opciones.get('nox_tolerance', 0.15))
     pm_tol = float(opciones.get('pm_tolerance', 0.15))
+    activar_radiacion = bool(opciones.get('radiacion', True))
+    activar_viento = bool(opciones.get('viento', True))
+    activar_temp_ext = bool(opciones.get('temp_externa', True))
+    activar_presion = bool(opciones.get('presion', False))
+    umbral_presion = float(opciones.get('presion_umbral') or SALTO_ATM)
+    umbrales_rad = dict(UMBRAL_RADIACION_NOCTURNA)
+    umbrales_rad.update(opciones.get('radiacion_umbrales') or {})
 
     df_validado = df.copy()
 
@@ -601,6 +747,62 @@ def validar_series_temporales(df, opciones=None):
                         _asegurar_columna_de_banderas(df_validado, param)
                         df_validado.loc[indices_originales, param] = 'IO'
 
+        # ---- Verificaciones meteorológicas por serie de tiempo ----
+        # Van juntas porque comparten el mismo eje de tiempo por estación, ya
+        # ordenado, y la misma bandera. Se calculan sobre `marcas`, las horas de
+        # calendario, para que un hueco de publicación no se confunda con una
+        # serie plana.
+        marcas = df_estacion['datetime_temp'].to_numpy()
+        posiciones = df_estacion['index'].to_numpy()
+
+        def _marcar(param, mascara):
+            """Escribe 'IO' en las filas marcadas del parámetro."""
+            if not mascara.any():
+                return
+            _asegurar_columna_de_banderas(df_validado, param)
+            df_validado.loc[posiciones[mascara], param] = 'IO'
+
+        def _numerico(param):
+            return pd.to_numeric(df_estacion[param], errors='coerce').to_numpy(dtype=float)
+
+        # Radiación distinta de cero durante la noche (22:00-05:00).
+        if activar_radiacion:
+            horas = df_estacion['HOUR'].to_numpy()
+            es_noche = (horas >= HORA_NOCHE_INICIO) | (horas <= HORA_NOCHE_FIN)
+            for param, umbral in umbrales_rad.items():
+                if param not in df_estacion.columns:
+                    continue
+                valores = _numerico(param)
+                _marcar(param, es_noche & ~np.isnan(valores) & (np.abs(valores) > umbral))
+
+        # Viento: velocidad y dirección clavadas durante horas.
+        if activar_viento:
+            for param in ('WS', 'WD'):
+                if param not in df_estacion.columns:
+                    continue
+                valores = _numerico(param)
+                mascara = np.zeros(len(valores), dtype=bool)
+                for horas_ventana, amplitud in SERIES_PLANAS[param]:
+                    mascara |= _marcar_series_planas(
+                        marcas, valores, horas_ventana, amplitud,
+                        circular=(param == 'WD'),
+                    )
+                _marcar(param, mascara)
+
+        # Temperatura externa: salto brusco contra la hora previa, o serie plana.
+        if activar_temp_ext and 'ET' in df_estacion.columns:
+            valores = _numerico('ET')
+            mascara = _marcar_saltos_horarios(marcas, valores, SALTO_ET)
+            for horas_ventana, amplitud in SERIES_PLANAS['ET']:
+                mascara |= _marcar_series_planas(marcas, valores, horas_ventana, amplitud)
+            _marcar('ET', mascara)
+
+        # Presión barométrica: cambios mayores de lo que da la atmósfera en 3 h.
+        if activar_presion and 'ATM' in df_estacion.columns:
+            valores = _numerico('ATM')
+            _marcar('ATM', _marcar_saltos_en_ventana(
+                marcas, valores, VENTANA_ATM, umbral_presion))
+
     df_validado = df_validado.drop('datetime_temp', axis=1)
 
     return df_validado
@@ -644,8 +846,14 @@ def validar_datos_completo(df, config=None):
             'constantes': config.get('series_constantes', True),
             'nox': config.get('series_nox', True),
             'pm': config.get('series_pm', True),
-            'nox_tolerance': config.get('nox_tolerance', 0.10),
+            'nox_tolerance': config.get('nox_tolerance', 0.15),
             'pm_tolerance': config.get('pm_tolerance', 0.15),
+            'radiacion': config.get('series_radiacion', True),
+            'viento': config.get('series_viento', True),
+            'temp_externa': config.get('series_temp_externa', True),
+            'presion': config.get('series_presion', False),
+            'presion_umbral': config.get('presion_umbral'),
+            'radiacion_umbrales': config.get('radiacion_umbrales'),
         }
         df_validado = validar_series_temporales(df_validado, opciones_series)
 
@@ -767,6 +975,58 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+# ---------------------------------------------------------------------------
+# Descarga de la app de escritorio
+#
+# La misma compilación del frontend sirve para web y para escritorio, así que
+# quien entra por el navegador puede llevarse el ejecutable desde aquí. Se
+# sirven solo dos nombres conocidos y nunca lo que pida el cliente: aceptar un
+# nombre de archivo de fuera sería servir cualquier cosa del disco.
+# ---------------------------------------------------------------------------
+
+CARPETA_SALIDA = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'salida'))
+
+APP_ESCRITORIO = {
+    'Validador-instalador.exe': {
+        'etiqueta': 'Instalador',
+        'detalle': 'Instala la app y crea acceso directo. Recomendado.',
+    },
+    'Validador-portable.exe': {
+        'etiqueta': 'Portable',
+        'detalle': 'Un solo archivo, no instala nada. Para USB o equipos sin permisos.',
+    },
+}
+
+
+@app.route('/api/app-escritorio', methods=['GET'])
+def listar_app_escritorio():
+    """Qué ejecutables hay compilados ahora mismo, con su tamaño y fecha."""
+    disponibles = []
+    for nombre, info in APP_ESCRITORIO.items():
+        ruta = os.path.join(CARPETA_SALIDA, nombre)
+        if not os.path.exists(ruta):
+            continue
+        disponibles.append({
+            'nombre': nombre,
+            'etiqueta': info['etiqueta'],
+            'detalle': info['detalle'],
+            'tamano_mb': round(os.path.getsize(ruta) / (1024 * 1024), 1),
+            'compilado': datetime.fromtimestamp(os.path.getmtime(ruta)).isoformat(timespec='seconds'),
+            'url': f'/api/app-escritorio/{nombre}',
+        })
+    return jsonify({'disponible': bool(disponibles), 'archivos': disponibles})
+
+
+@app.route('/api/app-escritorio/<nombre>', methods=['GET'])
+def descargar_app_escritorio(nombre):
+    if nombre not in APP_ESCRITORIO:
+        return jsonify({'error': 'Ese archivo no existe.'}), 404
+    ruta = os.path.join(CARPETA_SALIDA, nombre)
+    if not os.path.exists(ruta):
+        return jsonify({'error': 'La app de escritorio no está compilada en este servidor.'}), 404
+    return send_file(ruta, as_attachment=True, download_name=nombre)
+
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Endpoint de salud de la API"""
@@ -796,7 +1056,7 @@ def get_config():
             },
             'nox': {
                 'default': True,
-                'tolerancia_default': 0.10,
+                'tolerancia_default': 0.15,
                 'descripcion': 'Verifica que (NO + NO2) / NOX ≈ 1 dentro de la tolerancia. Si se desvía, marca NO, NO2 y NOX como IO en esa hora.',
             },
             'pm': {

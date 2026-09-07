@@ -459,6 +459,98 @@ export default function Dashboard() {
                   </div>
                 </div>
 
+                {/* Radiación nocturna */}
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={validationConfig.series_radiacion}
+                    disabled={!validationConfig.series}
+                    onChange={e => setValidationConfig(prev => ({ ...prev, series_radiacion: e.target.checked }))}
+                    className="mt-1 w-4 h-4 accent-purple-600 cursor-pointer disabled:cursor-not-allowed"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-slate-700 text-sm">Radiación nocturna</p>
+                      <div className="relative group">
+                        <Info className="h-3.5 w-3.5 text-slate-400 cursor-help" />
+                        <div className="absolute left-5 top-0 z-10 hidden group-hover:block w-72 p-2 bg-slate-800 text-white text-xs rounded-lg shadow-lg">
+                          Marca <strong>IO</strong> la radiación distinta de cero durante la noche. El umbral es 5 W/m² para RS y 0.1 para UVI: a cero estricto, el ruido del sensor marcaría todas las noches.
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">RS y UVI entre las 22:00 y las 05:00.</p>
+                  </div>
+                </div>
+
+                {/* Viento sin variación */}
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={validationConfig.series_viento}
+                    disabled={!validationConfig.series}
+                    onChange={e => setValidationConfig(prev => ({ ...prev, series_viento: e.target.checked }))}
+                    className="mt-1 w-4 h-4 accent-purple-600 cursor-pointer disabled:cursor-not-allowed"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-slate-700 text-sm">Viento sin variación</p>
+                      <div className="relative group">
+                        <Info className="h-3.5 w-3.5 text-slate-400 cursor-help" />
+                        <div className="absolute left-5 top-0 z-10 hidden group-hover:block w-72 p-2 bg-slate-800 text-white text-xs rounded-lg shadow-lg">
+                          Marca <strong>IO</strong> cuando el sensor lleva horas clavado. Un anemómetro trabado da un valor plausible y pasa la validación por rango; lo que lo delata es que no varía. La dirección se compara en círculo, así que 359° y 1° distan 2°, no 358°.
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">WS: 0.1 m/s en 3 h o 0.5 m/s en 12 h. WD: 1° en 3 h o 10° en 18 h.</p>
+                  </div>
+                </div>
+
+                {/* Temperatura externa anómala */}
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={validationConfig.series_temp_externa}
+                    disabled={!validationConfig.series}
+                    onChange={e => setValidationConfig(prev => ({ ...prev, series_temp_externa: e.target.checked }))}
+                    className="mt-1 w-4 h-4 accent-purple-600 cursor-pointer disabled:cursor-not-allowed"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-slate-700 text-sm">Temperatura externa anómala</p>
+                      <div className="relative group">
+                        <Info className="h-3.5 w-3.5 text-slate-400 cursor-help" />
+                        <div className="absolute left-5 top-0 z-10 hidden group-hover:block w-72 p-2 bg-slate-800 text-white text-xs rounded-lg shadow-lg">
+                          Marca <strong>IO</strong> los dos extremos: el salto imposible entre horas consecutivas y la serie demasiado plana para ser aire libre.
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">Salto &gt; 5 °C respecto a la hora previa, o menos de 0.5 °C en 12 h.</p>
+                  </div>
+                </div>
+
+                {/* Presión barométrica */}
+                <div className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={validationConfig.series_presion}
+                    disabled={!validationConfig.series}
+                    onChange={e => setValidationConfig(prev => ({ ...prev, series_presion: e.target.checked }))}
+                    className="mt-1 w-4 h-4 accent-purple-600 cursor-pointer disabled:cursor-not-allowed"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-slate-700 text-sm">Presión barométrica</p>
+                      <div className="relative group">
+                        <Info className="h-3.5 w-3.5 text-slate-400 cursor-help" />
+                        <div className="absolute left-5 top-0 z-10 hidden group-hover:block w-72 p-2 bg-slate-800 text-white text-xs rounded-lg shadow-lg">
+                          El umbral de 0.75 mmHg del script marca el <strong>54.6%</strong> de los datos reales de la red: la amplitud mediana en 3 h ya es 0.84 mmHg. Se deja desactivada hasta que el área técnica fije un umbral. Como referencia: 1.5 marca el 27%, 3.0 el 14%.
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">Cambios &gt; 0.75 mmHg en 3 h. Desactivada por defecto.</p>
+                  </div>
+                </div>
+
                 <div className="pt-2 border-t border-slate-200 flex items-start gap-2 text-xs text-slate-500">
                   <Info className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                   <p>
@@ -509,8 +601,8 @@ export default function Dashboard() {
         />
 
         <p className="mt-3 text-xs text-slate-500">
-          También puedes elegir el origen —archivo ENVISTA, archivo ya validado o
-          conexión SIMAJ— en el menú de la izquierda.
+          También puedes elegir el origen —archivo ENVISTA, archivo ya validado,
+          conexión SIMAJ o API de Emisiones— en el menú de la izquierda.
         </p>
       </div>
 

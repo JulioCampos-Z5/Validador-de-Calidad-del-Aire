@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   FileSpreadsheet, FileCheck2, DownloadCloud, RefreshCw, X,
-  ChevronDown, FileDown, Table2,
+  ChevronDown, FileDown, Table2, Radio,
 } from 'lucide-react';
-import { useDatos, type Origen } from '../estado/DatosContexto';
+import { useDatos, type Origen, type OrigenArchivo } from '../estado/DatosContexto';
 import apiService from '../services/api';
 import { minutalesApi, type Progreso } from '../services/minutales';
+import PanelEmisiones from './PanelEmisiones';
+import SelectorPeriodo from './SelectorPeriodo';
 
 /**
  * Carga y exportación de datos, en el menú lateral.
@@ -44,6 +46,12 @@ const ORIGENES: {
     etiqueta: 'Importar del SIMAJ',
     detalle: 'Descarga directa de las 13 estaciones.',
     icono: DownloadCloud,
+  },
+  {
+    id: 'emisiones',
+    etiqueta: 'Importar de Emisiones',
+    detalle: 'API de emisiones.jalisco.gob.mx. Pide iniciar sesión.',
+    icono: Radio,
   },
 ];
 
@@ -85,12 +93,12 @@ function Fila({
 export default function OrigenDatos() {
   const {
     cargarArchivo, cargarSimaj, cargando, origen, descripcion, error, limpiar,
-    resultado, mir, contaminantesMir,
+    resultado, mir, contaminantesMir, periodo,
   } = useDatos();
 
   const [abierto, setAbierto] = useState(true);
   const [panelSimaj, setPanelSimaj] = useState(false);
-  const [meses, setMeses] = useState(1);
+  const [panelEmisiones, setPanelEmisiones] = useState(false);
   const [progreso, setProgreso] = useState<Progreso | null>(null);
   const entrada = useRef<HTMLInputElement>(null);
   const sondeo = useRef<number | null>(null);
@@ -102,10 +110,17 @@ export default function OrigenDatos() {
   const elegir = (id: Origen) => {
     if (cargando) return;
     if (id === 'simaj') {
+      setPanelEmisiones(false);
       setPanelSimaj((v) => !v);
       return;
     }
+    if (id === 'emisiones') {
+      setPanelSimaj(false);
+      setPanelEmisiones((v) => !v);
+      return;
+    }
     setPanelSimaj(false);
+    setPanelEmisiones(false);
     // El modo viaja en el propio input: el diálogo del sistema es asíncrono y
     // guardarlo en estado abriría la puerta a que llegue el archivo con un modo
     // ya cambiado.
@@ -117,10 +132,15 @@ export default function OrigenDatos() {
 
   const alElegirArchivo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const archivo = e.target.files?.[0];
-    const modo = e.target.dataset.modo as Exclude<Origen, 'simaj'> | undefined;
+    const modo = e.target.dataset.modo as OrigenArchivo | undefined;
     e.target.value = ''; // permite volver a elegir el mismo archivo
     if (archivo && modo) cargarArchivo(archivo, modo);
   };
+
+  // El SIMAJ acepta periodos largos, así que aquí solo estorba el rango
+  // imposible; el tope de 31 días es cosa de la API de Emisiones.
+  const periodoInvertido =
+    new Date(periodo.hasta).getTime() <= new Date(periodo.desde).getTime();
 
   const descargar = async () => {
     setProgreso(null);
@@ -133,7 +153,7 @@ export default function OrigenDatos() {
       }
     }, 1000);
     try {
-      await cargarSimaj(meses);
+      await cargarSimaj();
       setPanelSimaj(false);
     } finally {
       if (sondeo.current) window.clearInterval(sondeo.current);
@@ -158,7 +178,9 @@ export default function OrigenDatos() {
       </button>
 
       {abierto && (
-        <div className="px-3 pb-4">
+        <>
+          <SelectorPeriodo />
+          <div className="px-3 pb-4">
           <input
             ref={entrada}
             type="file"
@@ -183,28 +205,21 @@ export default function OrigenDatos() {
 
             {panelSimaj && (
               <div className="mt-2 px-2.5 py-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                <select
-                  value={meses}
-                  disabled={cargando}
-                  onChange={(e) => setMeses(Number(e.target.value))}
-                  className="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm bg-white disabled:opacity-50"
-                >
-                  <option value={1}>Último mes</option>
-                  <option value={3}>Últimos 3 meses</option>
-                  <option value={6}>Últimos 6 meses</option>
-                  <option value={12}>Último año</option>
-                </select>
+                {/* Sin selector de fechas propio: el periodo se elige arriba,
+                    una sola vez y para todos los orígenes. */}
                 <button
                   type="button"
                   onClick={descargar}
-                  disabled={cargando}
-                  className="w-full mt-2 inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-md bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+                  disabled={cargando || periodoInvertido}
+                  className="w-full inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-md bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
                 >
                   {cargando ? <RefreshCw size={14} className="animate-spin" /> : <DownloadCloud size={14} />}
                   {cargando ? 'Descargando…' : 'Descargar'}
                 </button>
               </div>
             )}
+
+            {panelEmisiones && <PanelEmisiones />}
           </Grupo>
 
           {cargando && (
@@ -276,7 +291,8 @@ export default function OrigenDatos() {
               )}
             </Grupo>
           )}
-        </div>
+          </div>
+        </>
       )}
     </div>
   );

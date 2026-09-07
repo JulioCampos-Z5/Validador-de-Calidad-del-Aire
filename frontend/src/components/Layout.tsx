@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import OrigenDatos from './OrigenDatos';
+import DescargarApp from './DescargarApp';
 
 interface LayoutProps {
   children: ReactNode;
@@ -87,6 +88,7 @@ export default function Layout({ children }: LayoutProps) {
         </nav>
 
         <OrigenDatos />
+        <DescargarApp />
         </div>
 
         {/* Info Box */}

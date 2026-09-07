@@ -199,9 +199,16 @@ def descargar(
     carpeta_cache: str | None = None,
     concurrencia: int = 25,
     al_avanzar: Callable[[str, int, int, int, int], None] | None = None,
+    desde: datetime | None = None,
+    hasta: datetime | None = None,
 ) -> pd.DataFrame:
     """
     Baja el periodo pedido y devuelve un DataFrame en formato BD.
+
+    El periodo se da con `desde`/`hasta`, que es lo que manda la interfaz desde
+    que el selector de fechas es común a todos los orígenes. `meses` se queda
+    como respaldo para quien llame sin fechas —"el último mes hasta hoy"—, que
+    era la única forma de pedir un periodo antes.
 
     `carpeta_cache` evita volver a pedir lo ya bajado: el histórico no cambia,
     una hora ya publicada no se reescribe. Sin caché, cada corrida repetiría
@@ -209,8 +216,15 @@ def descargar(
     """
     sesion = _sesion()
     lista = list(estaciones_pedidas) if estaciones_pedidas else estaciones(sesion)
-    desde = datetime.now() - timedelta(days=31 * meses)
+
+    if desde is None:
+        desde = datetime.now() - timedelta(days=31 * meses)
     desde = desde.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Sin `hasta`, hasta donde llegue lo publicado. El límite es excluyente: un
+    # archivo se nombra por la hora en que se publica (`00_10` es la hora 00),
+    # así que pedir hasta el día siguiente a las 00:00 recoge el 23_10 del día
+    # anterior y ni un archivo más.
+    tope = hasta or datetime.max
 
     filas: list[dict] = []
 
@@ -219,7 +233,7 @@ def descargar(
         for href in _archivos(estacion, sesion):
             nombre = requests.utils.unquote(href.rsplit('/', 1)[-1])
             f = fecha_de_archivo(nombre)
-            if f is not None and f >= desde:
+            if f is not None and desde <= f < tope:
                 nombres.append(nombre)
 
         destino = os.path.join(carpeta_cache, estacion) if carpeta_cache else None
