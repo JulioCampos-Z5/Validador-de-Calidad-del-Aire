@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -8,8 +8,8 @@ import {
   X,
   BarChart3
 } from 'lucide-react';
-import { useState } from 'react';
 import OrigenDatos from './OrigenDatos';
+import { useDatos } from '../estado/DatosContexto';
 import DescargarApp from './DescargarApp';
 
 interface LayoutProps {
@@ -26,6 +26,15 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const isCharts = location.pathname === '/charts';
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { resultado } = useDatos();
+
+  // En Graficas el menu viene plegado para dejarle todo el ancho a las
+  // graficas. Pero si no hay datos no hay nada que ensanchar, y la pagina ya no
+  // tiene area de carga propia: sin esto, el mensaje remitiria a un menu que no
+  // se ve. Solo se abre; nunca se cierra solo, para no pelearse con el usuario.
+  useEffect(() => {
+    if (isCharts && !resultado) setSidebarOpen(true);
+  }, [isCharts, resultado]);
 
   return (
     <div className="min-h-screen bg-slate-50">

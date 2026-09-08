@@ -1,7 +1,5 @@
 # Integración con los minutales del SIMAJ
 
-Rama `integracion-minutales`.
-
 El validador ya no depende de que alguien exporte un `Trs.xlsx` desde ENVISTA:
 puede bajar los datos por su cuenta de `https://aire.jalisco.gob.mx/minutales/`.
 
@@ -116,14 +114,22 @@ que hay que atender para recuperar el indicador.
 ```bash
 cd escritorio
 npm install
-npm run dev    # abre la app
-npm run exe    # genera los ejecutables en ../salida/
+pip install pyinstaller     # solo para compilar; no hace falta para usar la app
+npm run dev    # abre la app usando el Python del sistema
+npm run exe    # frontend + backend empaquetado + ejecutables en ../salida/
 ```
 
-Produce `Validador-portable.exe` y `Validador-instalador.exe` (73 MB cada uno).
+`npm run exe` encadena tres pasos: compila el frontend, empaqueta el backend con
+PyInstaller (`npm run backend`, definido por `backend/validador-backend.spec`) y
+mete ambos dentro del ejecutable de Electron.
 
-**Cómo funciona.** Electron arranca el backend Flask como proceso hijo, espera a
-que `/api/health` responda y abre la ventana. Flask sirve además el frontend ya
+Produce `Validador-portable.exe` y `Validador-instalador.exe` (97 MB cada uno; antes eran 73, la diferencia es el intérprete de Python y sus librerías).
+
+**Cómo funciona.** Electron arranca el backend como proceso hijo, espera a que
+`/api/health` responda y abre la ventana. El backend va empaquetado con
+PyInstaller dentro de `resources/backend-exe`, así que **no hace falta tener
+Python instalado**: el intérprete y las librerías viajan con la app. En
+desarrollo esa carpeta no existe y se cae al `python app.py` de siempre. Flask sirve además el frontend ya
 compilado, así que página y API comparten origen: las llamadas a `/api`
 funcionan tal cual, sin proxy ni CORS, y **la misma compilación sirve para web y
 para escritorio**.
@@ -131,10 +137,9 @@ para escritorio**.
 El backend se mata al cerrar la ventana; si no, quedaría vivo ocupando el puerto
 8000 y el siguiente arranque fallaría sin explicar por qué.
 
-> **Requiere Python 3.10+ instalado.** El ejecutable trae Electron y el código
-> del backend, pero no el intérprete. Si no lo encuentra, avisa con un diálogo
-> claro en vez de fallar en silencio. Para un `.exe` verdaderamente autónomo
-> habría que empaquetar el backend con PyInstaller — no está hecho.
+> **No requiere Python.** Se empaqueta con PyInstaller en carpeta (no
+> `--onefile`): un archivo único tendría que descomprimir 100 MB de pandas y
+> numpy en cada arranque, y son varios segundos añadidos a cada apertura.
 
 ---
 
@@ -160,5 +165,9 @@ escucha en `127.0.0.1` con debug apagado; se reactiva con `VALIDADOR_DEBUG=1` y
   ecosistema vienen etiquetados como NOM-172-SEMARNAT-**2019**. Conviene
   confirmar si deben actualizarse a la versión 2023 antes de usarlos en
   reportes oficiales. *No afecta al MIR*, que solo mide suficiencia de datos.
-- Empaquetar el backend con PyInstaller para no depender de Python instalado.
-- Firmar los ejecutables: sin certificado, SmartScreen avisa la primera vez.
+- **Firmar los ejecutables.** Sin certificado, SmartScreen avisa la primera vez
+  y, en equipos con **Smart App Control** activo, Windows llega a bloquear el
+  ejecutable directamente —«Una directiva de Control de aplicaciones bloqueó
+  este archivo»—. Es reputacional: cada compilación produce un binario nuevo y
+  desconocido, así que el bloqueo aparece y desaparece entre compilaciones. Es
+  hoy el mayor obstáculo para repartir la app, y solo lo resuelve una firma.

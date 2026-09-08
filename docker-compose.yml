@@ -1,0 +1,45 @@
+# Despliegue del Validador en un servidor.
+#
+#   docker compose up -d --build
+#
+# Queda en http://localhost:8080. Detrás de un proxy (nginx, Traefik), apúntalo
+# al puerto 8000 del contenedor y sirve por HTTPS: la sesión de la API de
+# Emisiones viaja en las peticiones, y en claro cualquiera de la red la ve.
+
+services:
+  validador:
+    build: .
+    image: validador-calidad-aire:dev
+    container_name: validador
+    restart: unless-stopped
+    ports:
+      - "8080:8000"
+
+    volumes:
+      # Los ejecutables de Windows se compilan fuera —PyInstaller no compila
+      # para otro sistema— y se dejan aquí. Si la carpeta está vacía, la sección
+      # «App de escritorio» simplemente no aparece en el menú.
+      - ./salida:/app/salida:ro
+
+      # Caché de descargas y archivos de trabajo. Sin este volumen se pierde al
+      # reiniciar y la primera consulta de cada periodo vuelve a tardar: un
+      # trimestre de la API de Emisiones son unos 112 s en frío y unos 25 s
+      # después.
+      - validador-cache:/tmp
+
+      # Donde queda el token si alguien marca «recordar la sesión». Va aparte
+      # del resto a propósito: es una credencial, y conviene poder borrarla sin
+      # tirar la caché entera.
+      - validador-sesion:/home/validador
+
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health').read()"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+
+volumes:
+  validador-cache:
+  validador-sesion:

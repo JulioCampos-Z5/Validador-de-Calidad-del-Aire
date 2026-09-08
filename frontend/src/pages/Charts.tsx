@@ -1,6 +1,5 @@
-import { useMemo, useState } from 'react';
-import { BarChart3, Upload, AlertCircle, FileInput } from 'lucide-react';
-import { useDropzone } from 'react-dropzone';
+import { useMemo } from 'react';
+import { BarChart3, AlertCircle } from 'lucide-react';
 import LineCharts from '../components/LineCharts';
 import StatCharts from '../components/StatCharts';
 import CalendarHeatmaps from '../components/CalendarHeatmaps';
@@ -13,35 +12,25 @@ interface DataPoint {
   [key: string]: string | number | null;
 }
 
-type FileMode = 'envista' | 'validado';
+/** Como describir la procedencia de lo que hay cargado. */
+const ORIGENES: Record<string, string> = {
+  envista: 'archivo ENVISTA procesado',
+  validado: 'archivo ya validado',
+  simaj: 'descarga del SIMAJ',
+  emisiones: 'API de Emisiones',
+};
 
 const Charts = () => {
   // Los datos salen del contexto, no de una carga propia: asi venir del tablero
   // no obliga a volver a subir el archivo ni a repetir la descarga del SIMAJ.
   const {
-    resultado, cargando: loading, error, descripcion: filename, cargarArchivo, limpiar,
+    resultado, cargando: loading, error, descripcion: filename, origen, limpiar,
   } = useDatos();
-
-  const [fileMode, setFileMode] = useState<FileMode>('envista');
 
   const data = useMemo<DataPoint[]>(
     () => (resultado?.data_preview as DataPoint[] | undefined) ?? [],
     [resultado],
   );
-
-  const onDrop = (acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) cargarArchivo(acceptedFiles[0], fileMode);
-  };
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-      'application/vnd.ms-excel': ['.xls'],
-      'text/csv': ['.csv'],
-    },
-    multiple: false,
-  });
 
   // Descarta el conjunto compartido; el menu lateral queda listo para
   // elegir otro origen.
@@ -58,89 +47,15 @@ const Charts = () => {
         </div>
       </div>
 
-      {/* Upload area */}
-      {data.length === 0 && (
-        <div className="space-y-3">
-          {/* Selector de tipo de archivo */}
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200">
-            <p className="text-sm font-semibold text-gray-700 mb-3">Tipo de archivo a cargar:</p>
-            <div className="flex gap-3">
-              <label className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 cursor-pointer transition-colors ${
-                fileMode === 'envista'
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 hover:border-gray-300 text-gray-600'
-              }`}>
-                <input
-                  type="radio"
-                  name="fileMode"
-                  value="envista"
-                  checked={fileMode === 'envista'}
-                  onChange={() => setFileMode('envista')}
-                  className="accent-blue-600"
-                />
-                <Upload className="w-4 h-4" />
-                <div>
-                  <p className="font-medium text-sm">Archivo ENVISTA</p>
-                  <p className="text-xs opacity-75">Se validarán los datos al cargar</p>
-                </div>
-              </label>
-
-              <label className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 cursor-pointer transition-colors ${
-                fileMode === 'validado'
-                  ? 'border-green-500 bg-green-50 text-green-700'
-                  : 'border-gray-200 hover:border-gray-300 text-gray-600'
-              }`}>
-                <input
-                  type="radio"
-                  name="fileMode"
-                  value="validado"
-                  checked={fileMode === 'validado'}
-                  onChange={() => setFileMode('validado')}
-                  className="accent-green-600"
-                />
-                <FileInput className="w-4 h-4" />
-                <div>
-                  <p className="font-medium text-sm">Archivo Ya Validado</p>
-                  <p className="text-xs opacity-75">Excel con hoja "Datos_Validados"</p>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          {/* Dropzone */}
-          <div
-            {...getRootProps()}
-            className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors ${
-              isDragActive
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
-            }`}
-          >
-            <input {...getInputProps()} />
-            <Upload className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-            {loading ? (
-              <div className="space-y-2">
-                <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto" />
-                <p className="text-gray-600">
-                  {fileMode === 'envista' ? 'Procesando y validando archivo...' : 'Leyendo archivo validado...'}
-                </p>
-              </div>
-            ) : (
-              <>
-                <p className="text-lg text-gray-600 mb-2">
-                  {isDragActive
-                    ? 'Suelta el archivo aquí...'
-                    : fileMode === 'envista'
-                      ? 'Arrastra un archivo ENVISTA (.xlsx o .csv) o haz clic para seleccionar'
-                      : 'Arrastra el Excel/CSV validado o haz clic para seleccionar'}
-                </p>
-                <p className="text-sm text-gray-500">Soporta archivos .xlsx, .xls y .csv</p>
-              </>
-            )}
-          </div>
-
-          <p className="mt-4 text-sm text-gray-500 text-center">
-            O elige el origen —SIMAJ o API de Emisiones— en el menú de la izquierda.
+      {/* Sin datos no hay area de carga aqui: el origen se elige una sola vez
+          en el menu lateral y lo comparten todas las paginas. Duplicar el
+          selector invitaba a cargar dos veces lo mismo. */}
+      {data.length === 0 && !loading && (
+        <div className="bg-white rounded-xl border border-dashed border-slate-300 p-12 text-center">
+          <BarChart3 className="w-10 h-10 mx-auto text-slate-300 mb-3" />
+          <p className="text-slate-600">No hay datos cargados.</p>
+          <p className="text-sm text-slate-500 mt-1">
+            Elige un origen —archivo, SIMAJ o API de Emisiones— en el menú de la izquierda.
           </p>
         </div>
       )}
@@ -158,14 +73,18 @@ const Charts = () => {
         <>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
             <p className="text-blue-700">
-              <strong>Archivo cargado:</strong> {filename}
-              <span className="ml-2 text-sm">({data.length.toLocaleString()} registros · {fileMode === 'validado' ? 'datos validados' : 'datos ENVISTA procesados'})</span>
+              <strong>Datos cargados:</strong> {filename}
+              {/* El rotulo sale del origen real y no de un selector propio de
+                  esta pagina: los datos pueden venir de cuatro sitios. */}
+              <span className="ml-2 text-sm">
+                ({data.length.toLocaleString()} registros · {ORIGENES[origen ?? 'envista']})
+              </span>
             </p>
             <button
               onClick={resetData}
               className="text-sm text-blue-600 hover:text-blue-800 underline ml-4"
             >
-              Cargar otro archivo
+              Descartar
             </button>
           </div>
 

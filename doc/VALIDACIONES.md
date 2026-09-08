@@ -1,8 +1,9 @@
 # Validaciones: qué se aplica y por qué
 
-Referencia de lo que hace el validador, contrastado con el documento **«Script
-validación para datos de calidad del aire»**, que es la especificación
-funcional, y con la **NOM-156-SEMARNAT-2012**, que es el marco legal.
+Referencia de lo que hace el validador, contrastado con **«Script validación
+para datos de calidad del aire»** (`doc/script validación.pdf`), que es la
+especificación funcional, y con la **NOM-156-SEMARNAT-2012**, que es el marco
+legal.
 
 ---
 

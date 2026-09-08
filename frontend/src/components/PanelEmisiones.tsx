@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { LogIn, LogOut, RefreshCw, Search, AlertCircle } from 'lucide-react';
+import { LogIn, LogOut, RefreshCw, Search, AlertCircle, ShieldCheck } from 'lucide-react';
 import { useDatos } from '../estado/DatosContexto';
-import { DIAS_MAXIMOS } from '../services/emisiones';
+import { DIAS_AVISO, DIAS_MAXIMOS } from '../services/emisiones';
 
 /**
  * Acceso y consulta de la API de Emisiones de Jalisco.
@@ -16,6 +16,10 @@ import { DIAS_MAXIMOS } from '../services/emisiones';
  * mitad de una consulta el estado se limpia solo y este componente vuelve a
  * mostrar el acceso.
  *
+ * «Recordar la sesión» hace que el backend la guarde en el perfil del usuario y
+ * sobreviva al reinicio. Va desmarcada a propósito: deja una credencial en
+ * disco, y esa es una decisión del usuario, no un valor por defecto.
+ *
  * El periodo NO se elige aquí: es común a todos los orígenes y vive arriba, en
  * SelectorPeriodo. Lo único propio que queda es el tope de 31 días por
  * consulta, que sí es de esta API.
@@ -25,6 +29,7 @@ function Acceso() {
   const { entrarEmisiones } = useDatos();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [recordar, setRecordar] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [fallo, setFallo] = useState<string | null>(null);
 
@@ -33,7 +38,7 @@ function Acceso() {
     setEnviando(true);
     setFallo(null);
     try {
-      await entrarEmisiones(email.trim(), password);
+      await entrarEmisiones(email.trim(), password, recordar);
       // La contraseña se borra del estado en cuanto deja de hacer falta: el
       // backend ya tiene el token y no hay razón para seguir teniéndola aquí.
       setPassword('');
@@ -75,6 +80,26 @@ function Acceso() {
         disabled={enviando}
         className={campo}
       />
+      {/* Desmarcada por defecto: guardar el token es comodo pero deja una
+          credencial en disco, y esa decision la toma el usuario a sabiendas,
+          no el programa por el. */}
+      <label className="flex items-start gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={recordar}
+          disabled={enviando}
+          onChange={(e) => setRecordar(e.target.checked)}
+          className="mt-0.5 w-3.5 h-3.5 accent-primary-600 cursor-pointer"
+        />
+        <span className="text-[11px] text-slate-600 leading-snug">
+          Recordar la sesión en este equipo
+          <span className="block text-slate-400">
+            Evita volver a entrar al reiniciar. Guarda el token —no la
+            contraseña— en tu perfil de usuario.
+          </span>
+        </span>
+      </label>
+
       {fallo && (
         <p className="flex items-start gap-1.5 text-[11px] text-red-700 leading-snug">
           <AlertCircle size={13} className="shrink-0 mt-px" />
@@ -97,12 +122,14 @@ function Consulta() {
   const { sesionEmisiones, cargarEmisiones, salirEmisiones, cargando, periodo } = useDatos();
 
   // El periodo se elige arriba, en el selector común. Aquí solo se comprueba
-  // que sea legal PARA ESTA API: el tope de 31 días es suyo, no del SIMAJ, y
-  // por eso el aviso vive junto al botón que va a chocar contra él.
+  // que sea legal PARA ESTA API, y se avisa —sin bloquear— de que un periodo
+  // largo tarda. Un aviso que impide seguir obliga a adivinar el limite; uno
+  // que informa deja decidir con el dato delante.
   const dias = Math.round(
     (new Date(periodo.hasta).getTime() - new Date(periodo.desde).getTime()) / 86_400_000,
   );
   const rangoValido = Number.isFinite(dias) && dias > 0 && dias <= DIAS_MAXIMOS;
+  const rangoLargo = rangoValido && dias > DIAS_AVISO;
 
   return (
     <div className="space-y-2">
@@ -113,18 +140,39 @@ function Consulta() {
         <button
           type="button"
           onClick={salirEmisiones}
-          title="Olvidar el token"
+          title="Cerrar sesión y borrar el token guardado"
           className="text-slate-400 hover:text-slate-700 shrink-0"
         >
           <LogOut size={13} />
         </button>
       </div>
 
+      {sesionEmisiones.recordada && (
+        <p
+          className="flex items-start gap-1.5 text-[11px] text-slate-400 leading-snug"
+          title="El token está guardado en tu perfil de usuario. Cierra la sesión para borrarlo."
+        >
+          <ShieldCheck size={12} className="shrink-0 mt-px" />
+          Sesión recordada en este equipo
+          {sesionEmisiones.caduca
+            ? `, hasta el ${new Date(sesionEmisiones.caduca).toLocaleDateString()}`
+            : ''}
+        </p>
+      )}
+
       {!rangoValido && (
         <p className="text-[11px] text-amber-700 leading-snug">
           {dias <= 0
             ? 'Ajusta el periodo: la fecha final debe ser posterior a la inicial.'
-            : `Esta API no acepta más de ${DIAS_MAXIMOS} días por consulta. Acorta el periodo de arriba.`}
+            : `El máximo por consulta es de ${DIAS_MAXIMOS} días. Acorta el periodo de arriba.`}
+        </p>
+      )}
+
+      {rangoLargo && (
+        <p className="text-[11px] text-slate-500 leading-snug">
+          {dias} días es un periodo largo: la primera consulta puede tardar
+          un par de minutos. Las siguientes van rápidas — los días ya
+          descargados quedan guardados.
         </p>
       )}
 

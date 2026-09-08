@@ -69,8 +69,9 @@ export default function DescargarApp() {
               firmados. Decirlo antes evita que parezca un problema del
               archivo descargado. */}
           <p className="px-2.5 pt-2 text-[11px] text-slate-400 leading-snug">
-            Windows 11, 64 bits. Requiere Python 3.10+. Al abrirlo, SmartScreen
-            avisa la primera vez: «Más información» → «Ejecutar de todas formas».
+            Windows 64 bits. No necesita instalar nada más: el motor de
+            validación viaja dentro. Al abrirlo, SmartScreen avisa la primera
+            vez: «Más información» → «Ejecutar de todas formas».
           </p>
         </div>
       )}

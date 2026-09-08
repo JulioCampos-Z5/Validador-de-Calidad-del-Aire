@@ -31,10 +31,14 @@ Dos decisiones de diseño que conviene entender antes de tocar esto:
 from __future__ import annotations
 
 import base64
+import gzip
 import json
 import math
+import os
 import re
-from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime, timedelta
+from functools import lru_cache
 from typing import Any, Iterable
 
 import numpy as np
@@ -52,6 +56,22 @@ RUTA_MINUTALES = f'{BASE}/Minutales/'
 VIGENCIA_SUPUESTA = timedelta(hours=8)
 
 TIEMPO_ESPERA = 120
+
+# Tamaño del bloque en que se trocea un periodo largo, en días.
+#
+# La API se degrada de forma cuadrática con el rango pedido. Medido contra el
+# servidor: 1 día tarda 2.1 s, 7 días 4.4 s, 10 días 12.8 s, 14 días 21.0 s y
+# 21 días 48.8 s. Siete días es el punto óptimo —0.63 s por día frente a los
+# 2.1 s que cuesta un día suelto por la sobrecarga fija de cada petición— y un
+# mes entero de una sola vez ni siquiera cabía en el tiempo de espera.
+TROZO_DIAS = 7
+
+# Bloques simultáneos. Medido: 21 días en 3 bloques de 7 tardan 21.9 s en serie
+# y 14.1 s en paralelo. Más hilos no ayudan —siete peticiones de un día a la vez
+# salieron más lentas que una de siete— porque lo que manda es la sobrecarga
+# por petición, no el ancho de banda. Tres es suficiente y no castiga a un
+# servidor de gobierno que además es de uso compartido.
+CONCURRENCIA = 3
 
 # Columnas del formato BD del validador, en el orden en que las espera el resto
 # del sistema. Es el mismo juego de 17 parámetros que usa minutales/cliente.py.
@@ -86,8 +106,8 @@ ALIAS_CANALES = {
 }
 
 # Id numérico de parámetro -> canal BD. El orden es el del catálogo del
-# documento de la API ("API SIMAJ.md"): 1 O3 ... 17 TempInt. Hace falta porque
-# una respuesta en formato largo puede identificar el parámetro por id y no por
+# documento de la API (doc/"API SIMAJ.md"): 1 O3 ... 17 TempInt. Hace falta
+# porque una respuesta en formato largo puede identificar el parámetro por id y no por
 # nombre, y entonces no hay ningún texto que buscar en ALIAS_CANALES.
 ID_PARAMETROS = {i + 1: canal for i, canal in enumerate([
     'O3', 'NO', 'NO2', 'NOX', 'SO2', 'CO', 'PM10', 'PM2.5',
@@ -121,7 +141,7 @@ ALIAS_HORA = {'hora', 'hour', 'time'}
 # La API arrastra los mismos centinelas del datalogger que los .lsi.
 CENTINELAS = {-9999.0, -999.0, 9999.0}
 
-# Bandera de dato válido según el diccionario del SIMAJ (ver "API SIMAJ.md").
+# Bandera de dato válido según el diccionario del SIMAJ (ver doc/"API SIMAJ.md").
 BANDERA_VALIDA = 1
 
 # La respuesta real pone la bandera en un campo HERMANO, no anidada:
@@ -173,6 +193,23 @@ class SesionCaducada(ErrorEmisiones):
         super().__init__(mensaje, codigo=401)
 
 
+@lru_cache(maxsize=8192)
+def _clave_normalizada(texto: str) -> str:
+    """
+    Parte cara de `_clave`, memorizada.
+
+    Se llama millones de veces —una vez por campo y registro, y un mes son
+    decenas de miles de registros— sobre un repertorio de nombres que no llega a
+    cincuenta: los mismos 37 campos de `datos` en cada fila. Sin la memoria, un
+    trimestre se iba en 9 segundos de expresiones regulares sobre las mismas
+    cadenas una y otra vez.
+    """
+    s = texto.strip().lower()
+    for a, b in (('á', 'a'), ('é', 'e'), ('í', 'i'), ('ó', 'o'), ('ú', 'u'), ('ñ', 'n')):
+        s = s.replace(a, b)
+    return re.sub(r'[^a-z0-9]', '', s)
+
+
 def _clave(texto: Any) -> str:
     """
     Reduce un nombre de campo a su forma comparable.
@@ -181,10 +218,7 @@ def _clave(texto: Any) -> str:
     varía entre 'TempExt', 'temp_ext' y 'Temperatura Externa'. Sin esto haría
     falta una entrada de alias por cada forma de escribir lo mismo.
     """
-    s = str(texto).strip().lower()
-    for a, b in (('á', 'a'), ('é', 'e'), ('í', 'i'), ('ó', 'o'), ('ú', 'u'), ('ñ', 'n')):
-        s = s.replace(a, b)
-    return re.sub(r'[^a-z0-9]', '', s)
+    return _clave_normalizada(texto if isinstance(texto, str) else str(texto))
 
 
 def _sesion_http() -> requests.Session:
@@ -476,24 +510,41 @@ def _aplanar(registro: dict) -> dict:
     return plano
 
 
+# Formatos que manda la API. Probarlos con `strptime` antes de recurrir a
+# pandas no es microoptimizacion: `pd.to_datetime` vuelve a ADIVINAR el formato
+# en cada llamada, y sobre un trimestre eso son casi 6 segundos dedicados a
+# redescubrir que `1/9/2026` es dia/mes/año.
+FORMATOS_FECHA = ('%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M', '%d/%m/%Y')
+
+
 def _a_fecha(texto) -> datetime | None:
     """
-    Convierte a fecha probando primero ISO y luego día/mes/año.
+    Convierte a fecha probando primero ISO, luego día/mes/año.
 
     El orden importa: la respuesta trae las dos formas —`fechaHora` en ISO y
     `datos.Fecha` como `1/9/2026 00:00:00`— y sin `dayfirst` la segunda se leería
     como 9 de enero. Un mes entero de datos aterrizaría en la fecha equivocada
     sin que nada fallara de forma visible.
+
+    Pandas queda como último recurso: acepta casi cualquier cosa, pero cuesta.
     """
     if isinstance(texto, datetime):
         return texto
     s = str(texto).strip()
     if not s:
         return None
+
     try:
         return datetime.fromisoformat(s)
     except ValueError:
         pass
+
+    for formato in FORMATOS_FECHA:
+        try:
+            return datetime.strptime(s, formato)
+        except ValueError:
+            continue
+
     try:
         return pd.to_datetime(s, dayfirst=True).to_pydatetime()
     except Exception:
@@ -805,7 +856,143 @@ def _recortar(df: pd.DataFrame, desde: datetime, hasta: datetime) -> pd.DataFram
     return df[dentro].reset_index(drop=True)
 
 
-def descargar(token: str, desde: datetime, hasta: datetime) -> pd.DataFrame:
-    """Consulta, normalización y recorte, que es lo único que necesita la ruta."""
-    df = normalizar(consultar_minutales(token, desde, hasta))
+# ---------------------------------------------------------------------------
+# Troceado y caché
+# ---------------------------------------------------------------------------
+
+def _dias_del_rango(desde: datetime, hasta: datetime) -> list[date]:
+    """Días de calendario que toca el rango. `hasta` es excluyente."""
+    dias = []
+    d = desde.date()
+    fin = (hasta - timedelta(microseconds=1)).date()
+    while d <= fin:
+        dias.append(d)
+        d += timedelta(days=1)
+    return dias
+
+
+def _bloques(dias: list[date], tamano: int) -> list[tuple[date, date]]:
+    """
+    Agrupa días consecutivos en bloques de como mucho `tamano`.
+
+    Se cortan los bloques donde hay un salto para no volver a pedir días que ya
+    están en caché: si faltan el 1 y el 10, son dos peticiones de un día, no una
+    de diez.
+    """
+    if not dias:
+        return []
+    bloques = []
+    inicio = anterior = dias[0]
+    for d in dias[1:]:
+        contiguo = (d - anterior).days == 1
+        cabe = (d - inicio).days < tamano
+        if contiguo and cabe:
+            anterior = d
+            continue
+        bloques.append((inicio, anterior))
+        inicio = anterior = d
+    bloques.append((inicio, anterior))
+    return bloques
+
+
+def _ruta_cache(carpeta: str, dia: date) -> str:
+    return os.path.join(carpeta, f'{dia.isoformat()}.json.gz')
+
+
+def _leer_cache(carpeta: str, dia: date) -> list[dict] | None:
+    ruta = _ruta_cache(carpeta, dia)
+    if not os.path.exists(ruta):
+        return None
+    try:
+        with gzip.open(ruta, 'rt', encoding='utf-8') as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        # Un archivo truncado —por ejemplo, un corte a mitad de escritura— se
+        # ignora y se vuelve a pedir. Vale más una petición de más que servir
+        # medio día en silencio.
+        return None
+
+
+def _guardar_cache(carpeta: str, dia: date, registros: list[dict]) -> None:
+    """
+    Guarda un día ya cerrado.
+
+    Solo días pasados: el de hoy sigue creciendo, y cachearlo congelaría la
+    consulta en las horas que hubiera cuando se pidió por primera vez. Es la
+    misma razón por la que la caché de los .lsi del SIMAJ funciona: una hora ya
+    publicada no se reescribe.
+    """
+    if dia >= datetime.now().date():
+        return
+    os.makedirs(carpeta, exist_ok=True)
+    ruta = _ruta_cache(carpeta, dia)
+    temporal = ruta + '.parcial'
+    with gzip.open(temporal, 'wt', encoding='utf-8') as fh:
+        json.dump(registros, fh, ensure_ascii=False)
+    os.replace(temporal, ruta)  # atómico: nunca queda un .json.gz a medias
+
+
+def _dia_del_registro(registro: dict) -> date | None:
+    marca = _momento(_aplanar(registro))
+    return marca.date() if marca else None
+
+
+def descargar(
+    token: str,
+    desde: datetime,
+    hasta: datetime,
+    carpeta_cache: str | None = None,
+    concurrencia: int = CONCURRENCIA,
+    trozo_dias: int = TROZO_DIAS,
+) -> pd.DataFrame:
+    """
+    Trae el periodo, lo normaliza y lo recorta.
+
+    El periodo NO se pide de una vez. La API se degrada de forma cuadrática con
+    el rango —ver la nota de TROZO_DIAS—, así que se parte en bloques de una
+    semana que van en paralelo de tres en tres. Un mes pasa de no caber en el
+    tiempo de espera a resolverse en unos diez segundos.
+
+    Lo que ya se bajó no se vuelve a pedir: cada día cerrado se guarda en disco.
+    Al afinar los parámetros de validación sobre el mismo periodo —que es lo que
+    se hace de verdad, una y otra vez— la segunda pasada no toca la red.
+    """
+    dias = _dias_del_rango(desde, hasta)
+
+    crudos: list[dict] = []
+    faltantes: list[date] = []
+    for dia in dias:
+        guardado = _leer_cache(carpeta_cache, dia) if carpeta_cache else None
+        if guardado is None:
+            faltantes.append(dia)
+        else:
+            crudos.extend(guardado)
+
+    bloques = _bloques(faltantes, trozo_dias)
+    if bloques:
+        def traer(bloque):
+            ini, fin = bloque
+            return consultar_minutales(
+                token,
+                datetime.combine(ini, datetime.min.time()),
+                datetime.combine(fin + timedelta(days=1), datetime.min.time()),
+            )
+
+        with ThreadPoolExecutor(max_workers=max(1, concurrencia)) as pool:
+            for registros in pool.map(traer, bloques):
+                crudos.extend(registros)
+
+        if carpeta_cache:
+            # Se cachea por día y no por bloque para que un rango que empieza a
+            # mitad de semana reaproveche lo ya bajado en vez de pedirlo entero.
+            por_dia: dict[date, list[dict]] = {d: [] for d in faltantes}
+            for registro in crudos:
+                dia = _dia_del_registro(registro)
+                if dia in por_dia:
+                    por_dia[dia].append(registro)
+            for dia, registros in por_dia.items():
+                if registros:
+                    _guardar_cache(carpeta_cache, dia, registros)
+
+    df = normalizar(crudos)
     return _recortar(df, desde, hasta)

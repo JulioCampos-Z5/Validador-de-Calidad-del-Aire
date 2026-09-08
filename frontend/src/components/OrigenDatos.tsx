@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  FileSpreadsheet, FileCheck2, DownloadCloud, RefreshCw, X,
+  Upload, FileInput, DownloadCloud, RefreshCw, X,
   ChevronDown, FileDown, Table2, Radio,
 } from 'lucide-react';
 import { useDatos, type Origen, type OrigenArchivo } from '../estado/DatosContexto';
@@ -27,19 +27,19 @@ const ORIGENES: {
   id: Origen;
   etiqueta: string;
   detalle: string;
-  icono: typeof FileSpreadsheet;
+  icono: typeof Upload;
 }[] = [
   {
     id: 'envista',
     etiqueta: 'Importar archivo ENVISTA',
     detalle: 'Trs.xlsx o .csv crudo. Se convierte y se valida.',
-    icono: FileSpreadsheet,
+    icono: Upload,
   },
   {
     id: 'validado',
     etiqueta: 'Importar archivo validado',
     detalle: 'BD_{año}.xlsx o .csv procesado. Solo se muestra.',
-    icono: FileCheck2,
+    icono: FileInput,
   },
   {
     id: 'simaj',
@@ -64,7 +64,7 @@ function Grupo({ children }: { children: React.ReactNode }) {
 function Fila({
   icono: Icono, etiqueta, detalle, activo, ...resto
 }: {
-  icono: typeof FileSpreadsheet;
+  icono: typeof Upload;
   etiqueta: string;
   detalle: string;
   activo?: boolean;

@@ -7,7 +7,8 @@
   "main": "main.mjs",
   "scripts": {
     "dev": "npm --prefix ../frontend run build && electron .",
-    "exe": "npm --prefix ../frontend run build && electron-builder --win"
+    "backend": "python -m PyInstaller --distpath ../backend/dist --workpath ../backend/build --noconfirm ../backend/validador-backend.spec",
+    "exe": "npm --prefix ../frontend run build && npm run backend && electron-builder --win"
   },
   "devDependencies": {
     "electron": "^33.4.11",
@@ -19,7 +20,7 @@
     "directories": { "output": "../salida" },
     "files": ["main.mjs", "package.json"],
     "extraResources": [
-      { "from": "../backend", "to": "backend", "filter": ["**/*", "!__pycache__/**", "!**/*.pyc"] },
+      { "from": "../backend/dist/validador-backend", "to": "backend-exe" },
       { "from": "../frontend/dist", "to": "frontend/dist" }
     ],
     "win": {

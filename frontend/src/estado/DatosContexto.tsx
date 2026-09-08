@@ -77,7 +77,7 @@ interface Estado {
   cargarArchivo: (archivo: File, origen: OrigenArchivo) => Promise<void>;
   cargarSimaj: () => Promise<void>;
   cargarEmisiones: () => Promise<void>;
-  entrarEmisiones: (email: string, password: string) => Promise<void>;
+  entrarEmisiones: (email: string, password: string, recordar?: boolean) => Promise<void>;
   salirEmisiones: () => Promise<void>;
   cambiarContaminantesMir: (c: string[]) => Promise<void>;
   limpiar: () => void;
@@ -150,7 +150,7 @@ export function DatosProvider({ children }: { children: ReactNode }) {
   const [revalidar, setRevalidar] = useState(true);
   const [config, setConfig] = useState<ConfigValidacion>(CONFIG_POR_DEFECTO);
   const [sesionEmisiones, setSesionEmisiones] = useState<SesionEmisiones>({
-    activa: false, email: null, caduca: null,
+    activa: false, email: null, caduca: null, recordada: false,
   });
   const [periodo, setPeriodo] = useState<Periodo>(PERIODO_POR_DEFECTO);
 
@@ -241,11 +241,13 @@ export function DatosProvider({ children }: { children: ReactNode }) {
     }
   }, [configBackend, contaminantesMir, periodo]);
 
-  const entrarEmisiones = useCallback(async (email: string, password: string) => {
+  const entrarEmisiones = useCallback(async (
+    email: string, password: string, recordar = false,
+  ) => {
     // El error se propaga en vez de guardarse en `error`: el formulario de
     // acceso lo pinta junto al campo, y un mensaje de credenciales en el panel
     // general de errores queda lejos de donde se escribio la contrasena.
-    const s = await emisionesApi.login(email, password);
+    const s = await emisionesApi.login(email, password, recordar);
     setSesionEmisiones(s);
   }, []);
 
@@ -280,7 +282,7 @@ export function DatosProvider({ children }: { children: ReactNode }) {
       const respuesta = (e as { response?: { status?: number; data?: { error?: string } } }).response;
       // Un 401 aqui significa que el token murio a mitad de sesion. El backend
       // ya lo descarto; hay que reflejarlo para que vuelva a salir el acceso.
-      if (respuesta?.status === 401) setSesionEmisiones({ activa: false, email: null, caduca: null });
+      if (respuesta?.status === 401) setSesionEmisiones({ activa: false, email: null, caduca: null, recordada: false });
       setError(respuesta?.data?.error ?? 'No se pudo consultar la API de Emisiones.');
     } finally {
       setCargando(false);

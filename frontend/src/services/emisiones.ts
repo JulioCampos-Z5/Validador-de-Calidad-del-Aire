@@ -14,8 +14,10 @@ const api = axios.create({ baseURL: '/api/emisiones' });
 export interface SesionEmisiones {
   activa: boolean;
   email: string | null;
-  /** ISO-8601. El token es diario; sirve para avisar antes de que caduque. */
+  /** ISO-8601. Sirve para avisar antes de que caduque. */
   caduca: string | null;
+  /** Hay una sesion guardada en disco que sobrevive al reinicio del backend. */
+  recordada: boolean;
 }
 
 export interface RangoEmisiones {
@@ -25,15 +27,30 @@ export interface RangoEmisiones {
   dias?: number;
 }
 
-/** Techo del backend; el selector no ofrece más para no chocar contra el 400. */
-export const DIAS_MAXIMOS = 31;
+/** Techo del backend. Mas alla de esto devuelve 400. */
+export const DIAS_MAXIMOS = 366;
+
+/**
+ * A partir de aqui la consulta tarda lo suficiente como para avisar. No
+ * bloquea: 90 dias son unos 112 s la primera vez y unos 25 s las siguientes,
+ * porque los dias cerrados quedan en cache y no se vuelven a pedir.
+ */
+export const DIAS_AVISO = 31;
 
 export const emisionesApi = {
   sesion: async (): Promise<SesionEmisiones> =>
     (await api.get<SesionEmisiones>('/sesion')).data,
 
-  login: async (email: string, password: string): Promise<SesionEmisiones> =>
-    (await api.post<SesionEmisiones>('/login', { email, password })).data,
+  /**
+   * `recordar` guarda el token en el perfil del usuario para que sobreviva al
+   * reinicio. La contrasena no se guarda nunca, ni aqui ni en el backend.
+   */
+  login: async (
+    email: string,
+    password: string,
+    recordar = false,
+  ): Promise<SesionEmisiones> =>
+    (await api.post<SesionEmisiones>('/login', { email, password, recordar })).data,
 
   salir: async (): Promise<SesionEmisiones> =>
     (await api.post<SesionEmisiones>('/salir')).data,

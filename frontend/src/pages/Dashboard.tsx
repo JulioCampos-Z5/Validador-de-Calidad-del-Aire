@@ -14,7 +14,6 @@ import {
   Info,
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
-import FileUpload from '../components/FileUpload';
 import DataTable from '../components/DataTable';
 import apiService, { HealthResponse } from '../services/api';
 import TarjetaMir from '../components/TarjetaMir';
@@ -54,10 +53,9 @@ export default function Dashboard() {
   // otra vez.
   const {
     resultado: validationResult, mir, fallas, contaminantesMir,
-    cargando: isLoading, error, exito: success,
     revalidar: revalidate, setRevalidar: setRevalidate,
     config: validationConfig, setConfig: setValidationConfig,
-    cambiarContaminantesMir, cargarArchivo,
+    cambiarContaminantesMir,
   } = useDatos();
 
   const [editingSection, setEditingSection] = useState<'rangos' | 'temperatura' | 'series' | null>(null);
@@ -68,13 +66,6 @@ export default function Dashboard() {
       .catch(() => {})
       .finally(() => setLoadingHealth(false));
   }, []);
-
-  /**
-   * Subir un archivo desde el area central sigue funcionando; delega en el
-   * contexto para que el resultado sea el mismo que si se hubiera elegido el
-   * origen en el menu.
-   */
-  const handleFileUpload = (file: File) => cargarArchivo(file, 'envista');
 
   const handleDownload = () => {
     if (validationResult?.output_filename) {
@@ -133,9 +124,9 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold text-slate-800 mb-4">🚀 Inicio Rápido</h2>
           <div className="space-y-3">
             {[
-              { n: 1, title: 'Configurar validaciones', desc: 'Selecciona y personaliza las validaciones en la sección inferior' },
-              { n: 2, title: 'Subir archivo ENVISTA', desc: 'Arrastra tu archivo .xlsx o .csv al área de carga' },
-              { n: 3, title: 'Descargar resultados', desc: 'Obtén el Excel con datos validados y reportes' },
+              { n: 1, title: 'Elegir el periodo y el origen', desc: 'En el menú de la izquierda: archivo, SIMAJ o API de Emisiones' },
+              { n: 2, title: 'Configurar validaciones', desc: 'Selecciona y personaliza las validaciones en la sección inferior' },
+              { n: 3, title: 'Descargar resultados', desc: 'Obtén el Excel con datos validados y reportes, también desde el menú' },
             ].map(({ n, title, desc }) => (
               <div key={n} className="flex items-start gap-3">
                 <span className="flex-shrink-0 w-6 h-6 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center text-sm font-medium">{n}</span>
@@ -564,17 +555,10 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-      </div>
 
-      {/* ─── SUBIR ARCHIVO ─── */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200 space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-800 mb-1">📁 Subir Archivo</h2>
-          <p className="text-sm text-slate-500">
-            Carga un archivo ENVISTA (.xlsx o .csv) o un BD ya procesado. Se aplicarán las validaciones seleccionadas arriba.
-          </p>
-        </div>
-
+        {/* Re-validar vivia junto al area de subir archivo, que ya no existe.
+            Es una opcion de validacion, asi que se queda con las demas en vez
+            de desaparecer con el bloque que la alojaba. */}
         <div className="flex items-start gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
           <input
             id="revalidate-toggle"
@@ -586,24 +570,15 @@ export default function Dashboard() {
           <label htmlFor="revalidate-toggle" className="text-sm text-slate-700">
             <span className="font-medium">Re-validar si el archivo ya fue procesado</span>
             <span className="block text-slate-500 mt-0.5">
-              Si el archivo ya tiene estructura <code className="bg-slate-200 px-1 rounded">BD_{'{año}'}</code> (hoja <code className="bg-slate-200 px-1 rounded">Data</code>),
-              al activar esto se re-ejecutan las validaciones con la configuración actual. Desactívalo para solo previsualizar los datos sin modificar banderas.
-              No afecta a archivos crudos de Envista (siempre se validan).
+              Si el archivo importado ya tiene estructura{' '}
+              <code className="bg-slate-200 px-1 rounded">BD_{'{año}'}</code> (hoja{' '}
+              <code className="bg-slate-200 px-1 rounded">Data</code>), al activar esto se
+              re-ejecutan las validaciones con la configuración actual. Desactívalo para solo
+              previsualizar los datos sin modificar banderas. No afecta a archivos crudos de
+              Envista, que siempre se validan.
             </span>
           </label>
         </div>
-
-        <FileUpload
-          onFileUpload={handleFileUpload}
-          isLoading={isLoading}
-          error={error}
-          success={success}
-        />
-
-        <p className="mt-3 text-xs text-slate-500">
-          También puedes elegir el origen —archivo ENVISTA, archivo ya validado,
-          conexión SIMAJ o API de Emisiones— en el menú de la izquierda.
-        </p>
       </div>
 
       {/* ─── RESULTADOS ─── */}

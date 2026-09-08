@@ -3,6 +3,13 @@
  *
  * Arranca el backend Flask como proceso hijo y abre una ventana apuntando a él.
  *
+ * El backend viaja empaquetado
+ * ----------------------------
+ * En la app instalada, el intérprete de Python y las librerías van dentro de
+ * `resources/backend-exe`, generados con PyInstaller. Quien recibe el .exe no
+ * necesita instalar Python. En desarrollo esa carpeta no existe, así que se cae
+ * al `python app.py` de siempre y el ciclo de trabajo no cambia.
+ *
  * Por qué se carga por http y no como file://
  * -------------------------------------------
  * El frontend llama a /api. Abierto como file:// esas rutas no resuelven contra
@@ -24,8 +31,27 @@ const BASE = `http://127.0.0.1:${PUERTO}`;
 
 let backend = null;
 
+// Ultimo motivo conocido de que el backend no arranque, para poder decirlo en
+// el dialogo en vez de dejar al usuario adivinando.
+let ultimoError = null;
+
+/**
+ * El backend ya compilado que viaja con la app, si está.
+ *
+ * `raiz` apunta a la carpeta del proyecto en desarrollo y a `resources/` en la
+ * app empaquetada, así que la misma ruta sirve para los dos casos: en
+ * desarrollo simplemente no existe.
+ */
+function backendEmpaquetado() {
+  const exe = join(raiz, 'backend-exe', 'validador-backend.exe');
+  return existsSync(exe) ? exe : null;
+}
+
 /**
  * Busca un intérprete de Python utilizable.
+ *
+ * Solo hace falta en desarrollo. En la app instalada nunca se llama, porque el
+ * backend empaquetado se encuentra antes.
  *
  * En Windows conviven varios lanzadores y no siempre está `python` en el PATH,
  * así que se prueban los habituales en orden y se comprueba que respondan de
@@ -43,14 +69,46 @@ function buscarPython() {
   return null;
 }
 
-function arrancarBackend(python) {
-  backend = spawn(python, ['app.py'], {
-    cwd: join(raiz, 'backend'),
-    env: { ...process.env, VALIDADOR_HOST: '127.0.0.1', VALIDADOR_DEBUG: '0' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+function arrancarBackend({ exe, python }) {
+  // Sin recarga automatica en ninguno de los dos modos: quien arranca aqui es
+  // la aplicacion, no alguien editando codigo. Con el recargador, el proceso
+  // que sirve es un hijo del que lanzamos, y al cerrar la ventana se quedaba
+  // vivo ocupando el puerto 8000.
+  const entorno = {
+    ...process.env,
+    VALIDADOR_HOST: '127.0.0.1',
+    VALIDADOR_DEBUG: '0',
+    VALIDADOR_SIN_RECARGA: '1',
+  };
+
+  backend = exe
+    // El ejecutable empaquetado se lanza desde su propia carpeta y se le oculta
+    // la consola: está compilado como aplicación de consola a propósito —así
+    // conserva stdout para las trazas—, pero al usuario no tiene por qué
+    // aparecerle una ventana negra detrás de la aplicación.
+    ? spawn(exe, [], {
+        cwd: dirname(exe),
+        env: entorno,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      })
+    : spawn(python, ['app.py'], {
+        cwd: join(raiz, 'backend'),
+        env: entorno,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
   backend.stdout.on('data', (d) => process.stdout.write(`[backend] ${d}`));
   backend.stderr.on('data', (d) => process.stderr.write(`[backend] ${d}`));
+  // Un fallo al lanzar el backend llega como EVENTO, no como excepcion. Sin
+  // escucharlo, el proceso moria en silencio y la app se limitaba a decir "no
+  // respondio" veinte segundos despues, sin una sola pista de por que.
+  backend.on('error', (e) => {
+    ultimoError = `No se pudo lanzar el backend: ${e.message}`;
+    process.stderr.write(`[backend] ${ultimoError}` + String.fromCharCode(10));
+  });
+  backend.on('exit', (codigo) => {
+    if (codigo) ultimoError = `El backend terminó con código ${codigo}.`;
+  });
 }
 
 /**
@@ -93,6 +151,7 @@ function crearVentana() {
 }
 
 app.whenReady().then(async () => {
+
   if (!existsSync(join(raiz, 'frontend', 'dist', 'index.html'))) {
     dialog.showErrorBox(
       'Falta compilar el frontend',
@@ -102,24 +161,36 @@ app.whenReady().then(async () => {
     return;
   }
 
-  const python = buscarPython();
-  if (!python) {
+  // El backend empaquetado manda: si esta, no se busca Python siquiera.
+  const exe = backendEmpaquetado();
+  const python = exe ? null : buscarPython();
+
+  if (!exe && !python) {
+    // Solo puede pasar en desarrollo: la app instalada trae su propio backend.
     dialog.showErrorBox(
-      'Python no encontrado',
-      'La aplicación necesita Python 3.10 o superior para el backend de validación.\n\n' +
-      'Instálalo desde python.org y vuelve a abrir la aplicación.',
+      'No se encontró el backend',
+      'No está el backend empaquetado (resources/backend-exe) ni hay un ' +
+      'intérprete de Python para arrancarlo desde el código.\n\n' +
+      'En desarrollo: instala Python 3.10 o superior.\n' +
+      'Si esto ocurre en la app instalada, la instalación está incompleta: ' +
+      'vuelve a instalarla.',
     );
     app.quit();
     return;
   }
 
-  arrancarBackend(python);
+  arrancarBackend({ exe, python });
 
   if (!await esperarBackend()) {
     dialog.showErrorBox(
       'El backend no respondió',
       'El servidor de validación no arrancó en 20 segundos.\n\n' +
-      'Comprueba que las dependencias estén instaladas:\n  pip install -r backend/requirements.txt',
+      (ultimoError ? ultimoError + '\n\n' : '') +
+      (backendEmpaquetado()
+        ? 'Puede que un antivirus haya bloqueado el backend empaquetado, o que '
+          + 'el puerto 8000 esté ocupado por otro programa.'
+        : 'Comprueba que las dependencias estén instaladas:\n'
+          + '  pip install -r backend/requirements.txt'),
     );
     app.quit();
     return;

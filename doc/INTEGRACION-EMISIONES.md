@@ -40,12 +40,13 @@ los otros tres.
 
 ```
 backend/emisiones/
-├── cliente.py   Token, consulta y normalización al formato BD
+├── cliente.py   Token, consulta, troceado, caché y normalización al formato BD
+├── almacen.py   Sesión guardada en disco, opcional
 └── rutas.py     Blueprint /api/emisiones
 
 frontend/src/
 ├── services/emisiones.ts          Cliente
-└── components/PanelEmisiones.tsx  Acceso + selector de rango
+└── components/PanelEmisiones.tsx  Acceso y consulta
 ```
 
 ### Endpoints
@@ -53,7 +54,7 @@ frontend/src/
 | Ruta | Qué hace |
 |---|---|
 | `GET /api/emisiones/sesion` | ¿Hay token vivo y hasta cuándo? |
-| `POST /api/emisiones/login` | Correo + contraseña → token del día |
+| `POST /api/emisiones/login` | Correo + contraseña → token. Con `recordar`, lo guarda |
 | `POST /api/emisiones/salir` | Olvida el token |
 | `POST /api/emisiones/descargar` | Rango de fechas → datos validados |
 | `GET /api/emisiones/muestra` | Respuesta cruda sin normalizar, para diagnosticar |
@@ -62,27 +63,52 @@ frontend/src/
 
 ## Dónde vive el token
 
-En **memoria del proceso de Python**. Ni en disco, ni en el navegador, ni en
-`localStorage`.
+En **memoria del proceso de Python** y nunca en el navegador. Al frontend solo le
+llega si hay sesión, con qué correo y hasta cuándo.
 
-- La contraseña se usa para pedir el token y se descarta en el acto; no se
-  guarda ni siquiera en memoria.
-- Al frontend nunca le llega el token: solo si hay sesión, con qué correo y
-  cuándo caduca.
-- Al reiniciar el backend hay que volver a entrar. Es el precio de no dejar una
-  credencial de una API de gobierno en un archivo que alguien pueda leer luego.
+- La contraseña se usa para pedir el token y se descarta en el acto. **No se
+  guarda nunca**, ni en memoria ni en disco, ni cifrada ni de ninguna forma: no
+  hace falta para nada una vez que hay token.
+- Al frontend nunca le llega el token.
 
 La petición la hace el backend aunque el servidor sí manda
 `Access-Control-Allow-Origin: *` y el navegador técnicamente podría llamarlo
 directo. Se hace así para que la contraseña no pase por el renderer y para
 armar el DataFrame donde ya vive pandas.
 
-**Caducidad.** Se lee del propio token: los que devuelve la API son JWT y
-traen su `exp` — el observado dura **una semana**, no un día. Si algún día
-dejara de ser un JWT legible, se asume una vigencia de 8 horas. Si el
-token muere a mitad de una consulta, el backend responde 401, limpia la sesión
-y la interfaz vuelve a mostrar el formulario de acceso — en vez de reintentar
-contra un token muerto.
+### «Recordar la sesión en este equipo»
+
+Opcional, **desmarcada por defecto**. Al marcarla, el backend guarda el token en
+
+```
+~/.validador-calidad-aire/sesion-emisiones.json
+```
+
+y lo recupera al arrancar, así que sobrevive a reiniciar el backend y a cerrar
+la app de escritorio. Como el archivo vive en el perfil del usuario, **una sesión
+guardada desde la web también la ve la app de escritorio**: es la misma cuenta
+del mismo equipo.
+
+Tres decisiones que van juntas:
+
+- **El archivo va en el perfil del usuario, no en la carpeta temporal.** En
+  Windows el temporal del sistema es común a todas las cuentas de la máquina;
+  el perfil ya está restringido por ACL. En POSIX se marca además `0600`.
+- **Entrar sin marcar la casilla borra lo que hubiera guardado antes.** Si no,
+  desmarcarla no serviría de nada y quedaría un token viejo en disco que nadie
+  recuerda haber dejado ahí.
+- **Cerrar sesión borra el archivo**, y también lo borra el backend si el token
+  muere a mitad de una consulta. Un token muerto en disco no tiene ningún uso y
+  solo alarga la vida de una credencial que ya no vale.
+
+El token sigue siendo una credencial: quien pueda leer ese archivo puede
+consultar la API en nombre del usuario hasta que caduque. Por eso es una
+decisión explícita y no un valor por defecto.
+
+**Caducidad.** Se lee del propio token: los que devuelve la API son JWT y traen
+su `exp` — el observado dura **una semana**. Si algún día dejara de ser un JWT
+legible, se asume una vigencia de 8 horas. Una sesión guardada que ya caducó no
+se restaura: se descarta y se borra.
 
 ---
 
@@ -196,13 +222,59 @@ manda al usuario a iniciar sesión otra vez.
 
 ---
 
-## Límite de rango
+## Rendimiento y límite de rango
 
-Máximo **31 días por consulta** (`DIAS_MAXIMOS` en `rutas.py`). Un minutal por
-estación son ~13 filas por minuto: un mes ya son cientos de miles de registros.
-Es un límite del cliente, no de la API, y está para que el error sea claro en
-vez de un tiempo de espera agotado sin explicación. El selector de fechas avisa
-antes de enviar.
+La API se degrada de forma **cuadrática** con el rango pedido. Medido contra el
+servidor, en una sola petición:
+
+| Rango | Tiempo |
+|---|---|
+| 1 día | 2.1 s |
+| 7 días | 4.4 s |
+| 10 días | 12.8 s |
+| 14 días | 21.0 s |
+| 21 días | 48.8 s |
+
+Siete días cuestan 0.63 s por día; veintiuno cuestan 2.3 s por día. Por eso el
+periodo **no se pide de una vez**: se parte en bloques de una semana que van de
+tres en tres. Los mismos 21 días bajan de 48.8 s a 14.1 s.
+
+Más paralelismo no ayuda: siete peticiones de un día a la vez tardaron 5.3 s,
+*más* que una sola de siete días. Lo que domina es la sobrecarga fija por
+petición, no el ancho de banda.
+
+**Caché por día.** Una hora publicada no se reescribe, así que un día cerrado no
+se vuelve a pedir (`emisiones_cache` en la carpeta temporal, ~22 KB por día). El
+día de hoy no se cachea porque sigue creciendo. Afinar los parámetros de
+validación sobre el mismo mes —que es lo que se hace de verdad, una y otra
+vez— deja de tocar la red a partir de la segunda pasada.
+
+**Techo: un año** (`DIAS_MAXIMOS`). Fue de 31 días mientras el periodo se pedía
+de una sola vez; con el troceado y la caché esa razón desapareció. Por encima de
+31 días la interfaz avisa de que va a tardar, pero no bloquea.
+
+Medido sobre **90 días** (26,615 filas, 13 estaciones): **112 s la primera vez y
+unos 25 s las siguientes**.
+
+### Dónde se va el tiempo en un periodo largo
+
+De esos ~25 s en caliente, ninguno es de red:
+
+| Etapa | 90 días |
+|---|---|
+| Leer la caché y normalizar | 1.8 s |
+| Validar | ~3 s |
+| Generar el Excel | ~6 s |
+| Resumen y serialización | ~0.7 s |
+
+`normalizar` costaba 11.9 s hasta que se memorizó `_clave`, que se llamaba
+**3.4 millones de veces** —una expresión regular por campo y registro— sobre un
+repertorio de menos de cincuenta nombres distintos. Con `lru_cache` y con los
+formatos de fecha probados con `strptime` antes de recurrir a pandas (que vuelve
+a adivinar el formato en cada llamada), la etapa bajó a 1.8 s.
+
+Queda el Excel: se genera en **cada** consulta aunque nadie lo descargue. Es el
+siguiente candidato a mejorar, generándolo bajo demanda.
 
 ---
 

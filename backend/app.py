@@ -9,6 +9,7 @@ from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
+import sys
 import tempfile
 from datetime import datetime
 import pandas as pd
@@ -45,6 +46,26 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max
+
+
+def raiz_recursos() -> str:
+    """
+    Carpeta que contiene `frontend/dist` y, si la hay, `salida`.
+
+    En desarrollo es la raíz del proyecto, un nivel por encima de `backend/`.
+
+    Empaquetado con PyInstaller no sirve `__file__`: apunta dentro del propio
+    ejecutable, a una ruta que no existe en el disco. La referencia buena es
+    `sys.executable`, que está en `resources/backend-exe/`, y los recursos de la
+    app cuelgan de `resources/`. Sin esto el backend arranca y responde la API,
+    pero devuelve 404 en `/` — la aplicación abre una ventana en blanco.
+    """
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(os.path.dirname(os.path.abspath(sys.executable)))
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+RAIZ_RECURSOS = raiz_recursos()
 
 
 # ============================================================================
@@ -984,7 +1005,7 @@ def allowed_file(filename):
 # nombre de archivo de fuera sería servir cualquier cosa del disco.
 # ---------------------------------------------------------------------------
 
-CARPETA_SALIDA = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'salida'))
+CARPETA_SALIDA = os.path.join(RAIZ_RECURSOS, 'salida')
 
 APP_ESCRITORIO = {
     'Validador-instalador.exe': {
@@ -1254,7 +1275,7 @@ def preview_validated():
 # pagina y la API comparten origen: las llamadas a /api funcionan tal cual y no
 # hay que tocar CORS ni reescribir rutas.
 
-FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'frontend', 'dist')
+FRONTEND_DIST = os.path.join(RAIZ_RECURSOS, 'frontend', 'dist')
 
 
 @app.route('/', defaults={'ruta': ''})
@@ -1286,9 +1307,14 @@ if __name__ == '__main__':
     # La recarga, en cambio, no tiene riesgo y hace falta en desarrollo; sin
     # ella es facil quedarse con el servidor sirviendo codigo viejo y perseguir
     # errores que ya estan corregidos en disco.
+    # Empaquetado con PyInstaller no hay codigo fuente que vigilar, asi que la
+    # recarga sobra. Y ademas estorba: levanta un segundo proceso —otros 100 MB
+    # de pandas— y, como quien sirve es el hijo, matar al padre desde Electron
+    # dejaba el puerto 8000 ocupado por un huerfano.
+    empaquetado = getattr(sys, 'frozen', False)
     depurar = os.environ.get('VALIDADOR_DEBUG') == '1'
     host = os.environ.get('VALIDADOR_HOST', '127.0.0.1')
-    recargar = os.environ.get('VALIDADOR_SIN_RECARGA') != '1'
+    recargar = not empaquetado and os.environ.get('VALIDADOR_SIN_RECARGA') != '1'
 
     print(f"Escuchando en {host}:8000  |  depurador: {'ON' if depurar else 'off'}"
           f"  |  recarga automatica: {'ON' if recargar else 'off'}\n")

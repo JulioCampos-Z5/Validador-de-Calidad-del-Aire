@@ -12,15 +12,22 @@ nada — los tres orígenes de datos conviven.
 
 Dónde vive el token
 -------------------
-En memoria del proceso, nunca en disco ni en el navegador. Consecuencias
-buscadas: al reiniciar el backend hay que volver a iniciar sesión, y el token no
-queda en un archivo que alguien pueda leer más tarde. La contraseña se usa para
-pedir el token y se descarta en el acto; no se guarda ni siquiera en memoria.
+En memoria del proceso y nunca en el navegador. Al frontend solo le llega si hay
+sesión, con qué correo y hasta cuándo.
+
+Si el usuario marca «recordar», además se guarda en disco (ver `almacen.py`) para
+que sobreviva al reinicio. Es opcional y va desmarcado por defecto: el
+comportamiento seguro sigue siendo el que manda salvo que alguien decida otra
+cosa a sabiendas.
+
+La contraseña se usa para pedir el token y se descarta en el acto. No se guarda
+nunca, ni en memoria ni en disco.
 """
 
 from __future__ import annotations
 
 import os
+import tempfile
 import threading
 import traceback
 from datetime import datetime, timedelta
@@ -28,10 +35,15 @@ from datetime import datetime, timedelta
 import pandas as pd
 from flask import Blueprint, jsonify, request
 
-from . import cliente
+from . import almacen, cliente
 from .cliente import ErrorEmisiones, SesionCaducada
 
 bp = Blueprint('emisiones', __name__, url_prefix='/api/emisiones')
+
+# Días ya cerrados que se bajaron alguna vez. El histórico no cambia: una hora
+# publicada no se reescribe. Sin esto, afinar los parámetros de validación sobre
+# el mismo mes repetiría la descarga entera cada vez.
+CACHE = os.path.join(tempfile.gettempdir(), 'emisiones_cache')
 
 # Sesión única del proceso. El validador es una herramienta de escritorio para
 # una persona a la vez —Electron arranca su propio backend—, así que una sesión
@@ -40,11 +52,37 @@ bp = Blueprint('emisiones', __name__, url_prefix='/api/emisiones')
 _sesion: dict = {'token': None, 'email': None, 'caduca': None}
 _candado = threading.Lock()
 
-# Techo del rango consultable de una vez. Un minutal por estación son ~13 filas
-# por minuto: un mes ya son cientos de miles de registros y la API se queda
-# pensando. Es un límite del cliente, no de la API, y está aquí para que el
-# error sea claro en vez de un tiempo de espera agotado sin explicación.
-DIAS_MAXIMOS = 31
+
+def _restaurar() -> None:
+    """
+    Recupera la sesión guardada, si la hay y sigue viva.
+
+    Se llama al importar el módulo, que es justo cuando arranca el backend: con
+    el recargador activo esto pasa en cada reinicio, y en la app de escritorio
+    en cada apertura de la ventana. `almacen.cargar` ya descarta y borra lo que
+    esté caducado o ilegible, así que aquí no hay nada que validar.
+    """
+    guardada = almacen.cargar()
+    if guardada:
+        _sesion.update(guardada)
+
+
+_restaurar()
+
+# Techo del rango consultable de una vez. Es un límite del cliente, no de la API.
+#
+# Fue 31 días mientras el periodo se pedía de una sola vez y un mes no cabía en
+# el tiempo de espera. Con la descarga troceada y la caché por día esa razón
+# desapareció, así que el techo pasa a ser un año — lo que tiene sentido validar
+# de una sentada, no lo que aguanta el transporte.
+#
+# Medido sobre 90 días (26,615 filas, 13 estaciones): unos 112 s la primera vez
+# y unos 25 s las siguientes, porque los días cerrados ya no se vuelven a pedir.
+DIAS_MAXIMOS = 366
+
+# A partir de aquí la interfaz avisa de que va a tardar. No bloquea: solo evita
+# que alguien pida un trimestre creyendo que tarda lo mismo que un día.
+DIAS_AVISO = 31
 
 
 def _hay_sesion() -> bool:
@@ -59,6 +97,7 @@ def _estado_sesion() -> dict:
         'activa': _hay_sesion(),
         'email': _sesion['email'] if _hay_sesion() else None,
         'caduca': _sesion['caduca'].isoformat() if _hay_sesion() and _sesion['caduca'] else None,
+        'recordada': almacen.hay_guardada(),
     }
 
 
@@ -78,6 +117,7 @@ def login():
     cuerpo = request.get_json(silent=True) or {}
     email = (cuerpo.get('email') or '').strip()
     password = cuerpo.get('password') or ''
+    recordar = bool(cuerpo.get('recordar', False))
 
     try:
         obtenido = cliente.solicitar_token(email, password)
@@ -93,14 +133,23 @@ def login():
             'email': email,
             'caduca': obtenido['caduca'],
         })
+        if recordar:
+            almacen.guardar(obtenido['token'], email, obtenido['caduca'])
+        else:
+            # Entrar sin marcar la casilla tiene que borrar lo que hubiera
+            # guardado antes. Si no, desmarcarla no serviría de nada y quedaría
+            # un token viejo en disco que nadie recuerda haber dejado ahí.
+            almacen.olvidar()
 
     return jsonify({'success': True, **_estado_sesion()})
 
 
 @bp.route('/salir', methods=['POST'])
 def salir():
+    """Cierra la sesión y borra también la guardada, si la había."""
     with _candado:
         _sesion.update({'token': None, 'email': None, 'caduca': None})
+        almacen.olvidar()
     return jsonify({'success': True, **_estado_sesion()})
 
 
@@ -129,8 +178,8 @@ def _rango_pedido(cuerpo: dict) -> tuple[datetime, datetime]:
         raise ErrorEmisiones('La fecha final debe ser posterior a la inicial.', codigo=400)
     if (hasta - desde).days > DIAS_MAXIMOS:
         raise ErrorEmisiones(
-            f'El rango no puede pasar de {DIAS_MAXIMOS} días. '
-            'Consulta el periodo por partes.',
+            f'El rango no puede pasar de {DIAS_MAXIMOS} días '
+            f'({DIAS_MAXIMOS // 30} meses). Consulta el periodo por partes.',
             codigo=400,
         )
     return desde, hasta
@@ -190,12 +239,15 @@ def descargar():
 
     try:
         desde, hasta = _rango_pedido(cuerpo)
-        df = cliente.descargar(_sesion['token'], desde, hasta)
+        df = cliente.descargar(_sesion['token'], desde, hasta, carpeta_cache=CACHE)
     except SesionCaducada as e:
         # El token murió a mitad de camino: se limpia para que la interfaz
         # muestre el formulario en vez de reintentar contra un token muerto.
         with _candado:
             _sesion.update({'token': None, 'caduca': None})
+            # Un token muerto en disco no sirve para nada y solo alarga la vida
+            # de una credencial que ya no vale.
+            almacen.olvidar()
         return jsonify({'error': str(e)}), 401
     except ErrorEmisiones as e:
         return jsonify({'error': str(e)}), e.codigo

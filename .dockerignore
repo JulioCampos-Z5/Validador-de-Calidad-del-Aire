@@ -1,0 +1,30 @@
+# Todo lo que no hace falta dentro de la imagen. Cuanto menos se copie, más
+# rápido es el build y menos pesa el resultado.
+
+.git
+.gitignore
+
+# Se instalan y compilan dentro; copiarlos sería llevarse los binarios de
+# Windows a una imagen Linux.
+**/node_modules
+frontend/dist
+
+# Ejecutables de Windows y artefactos de PyInstaller: se generan fuera y se
+# montan como volumen si se quieren ofrecer para descarga.
+salida/
+backend/build/
+backend/dist/
+escritorio/
+
+# Documentación y documentos de referencia: útiles en el repositorio, peso
+# muerto en la imagen (los PDF solos son 7 MB).
+doc/
+*.md
+
+__pycache__/
+**/__pycache__
+*.py[cod]
+*.log
+
+# Las pruebas no se ejecutan en la imagen de producción.
+backend/pruebas/
