@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Search, RefreshCw, X, ChevronDown, FileDown, Table2, Database,
+  Upload, FileInput, DownloadCloud, Radio,
 } from 'lucide-react';
-import { useDatos } from '../estado/DatosContexto';
+import { useDatos, type Origen } from '../estado/DatosContexto';
 import apiService from '../services/api';
 import { minutalesApi } from '../services/minutales';
 import SelectorPeriodo from './SelectorPeriodo';
@@ -12,30 +13,89 @@ import { clasesIcono, useMenu } from './menu';
 /**
  * Bloque de datos del menú: traer datos y exportarlos.
  *
- * Un solo botón. Antes había una lista de cuatro orígenes y cada uno desplegaba
- * su panel dentro de una columna de 256 px, donde el calendario no cabía y el
- * formulario de acceso quedaba apretado. Ahora el botón abre un asistente con
- * espacio para lo que cada origen necesita — ver `ModalDatos`.
+ * Un solo botón que despliega los cuatro orígenes. Antes eran cuatro botones
+ * sueltos y cada uno abría su panel dentro de una columna de 256 px, donde el
+ * calendario no cabía y el formulario de acceso quedaba apretado.
+ *
+ * La lista cuelga del botón; lo que se abre en un diálogo es lo que viene
+ * después —el archivo, el acceso, el periodo—, que sí necesita espacio. Ver
+ * `ModalDatos`.
  *
  * Lo que se queda aquí es el estado: qué hay cargado, cómo va la descarga y qué
  * se puede exportar. Eso conviene tenerlo a la vista sin abrir nada.
  */
+
+const ORIGENES: {
+  id: Origen;
+  etiqueta: string;
+  detalle: string;
+  icono: typeof Upload;
+}[] = [
+  {
+    id: 'envista',
+    etiqueta: 'Archivo ENVISTA',
+    detalle: 'Trs.xlsx o .csv crudo. Se convierte y se valida.',
+    icono: Upload,
+  },
+  {
+    id: 'validado',
+    etiqueta: 'Archivo ya validado',
+    detalle: 'Un BD_{año}.xlsx procesado, para volver a mirarlo.',
+    icono: FileInput,
+  },
+  {
+    id: 'simaj',
+    etiqueta: 'Descargar del SIMAJ',
+    detalle: 'Las 13 estaciones de aire.jalisco.gob.mx.',
+    icono: DownloadCloud,
+  },
+  {
+    id: 'emisiones',
+    etiqueta: 'API de Emisiones',
+    detalle: 'emisiones.jalisco.gob.mx. Requiere iniciar sesión.',
+    icono: Radio,
+  },
+];
+
 
 export default function OrigenDatos() {
   const {
     cargando, descripcion, error, limpiar, resultado, mir, contaminantesMir,
     progresoSimaj,
   } = useDatos();
-  const { plegado } = useMenu();
+  const { plegado, desplegar } = useMenu();
 
   const [abierto, setAbierto] = useState(true);
-  const [modal, setModal] = useState(false);
+  const [lista, setLista] = useState(false);
+  const [modal, setModal] = useState<Origen | null>(null);
+  const caja = useRef<HTMLDivElement>(null);
+
+  // La lista se cierra al pulsar fuera o con Escape. Un desplegable que solo se
+  // cierra volviendo a su botón se queda abierto estorbando.
+  useEffect(() => {
+    if (!lista) return;
+    const fuera = (e: MouseEvent) => {
+      if (caja.current && !caja.current.contains(e.target as Node)) setLista(false);
+    };
+    const escape = (e: KeyboardEvent) => { if (e.key === 'Escape') setLista(false); };
+    document.addEventListener('mousedown', fuera);
+    window.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('mousedown', fuera);
+      window.removeEventListener('keydown', escape);
+    };
+  }, [lista]);
+
+  const elegir = (id: Origen) => {
+    setLista(false);
+    setModal(id);
+  };
 
   const pct = progresoSimaj && progresoSimaj.total > 0
     ? Math.round((progresoSimaj.hechos / progresoSimaj.total) * 100)
     : 0;
 
-  const dialogo = modal ? <ModalDatos onCerrar={() => setModal(false)} /> : null;
+  const dialogo = modal ? <ModalDatos origen={modal} onCerrar={() => setModal(null)} /> : null;
 
   const exportaciones = resultado && !cargando ? (
     <>
@@ -81,7 +141,9 @@ export default function OrigenDatos() {
 
         <button
           type="button"
-          onClick={() => setModal(true)}
+          // Plegada no hay sitio para la lista, y sacarla fuera la recortaría el
+          // desplazamiento de la barra. Se despliega y se abre ahí.
+          onClick={() => { desplegar(); setLista(true); }}
           disabled={cargando}
           title="Consultar datos: archivo, SIMAJ o API de Emisiones"
           aria-label="Consultar datos"
@@ -122,15 +184,43 @@ export default function OrigenDatos() {
           <SelectorPeriodo />
 
           <div className="px-3 pb-4 space-y-1">
-            <button
-              type="button"
-              onClick={() => setModal(true)}
-              disabled={cargando}
-              className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
-            >
-              {cargando ? <RefreshCw size={15} className="animate-spin" /> : <Search size={15} />}
-              {cargando ? 'Trayendo datos…' : 'Consultar datos'}
-            </button>
+            <div ref={caja}>
+              <button
+                type="button"
+                onClick={() => setLista((v) => !v)}
+                disabled={cargando}
+                aria-expanded={lista}
+                aria-haspopup="menu"
+                className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+              >
+                {cargando ? <RefreshCw size={15} className="animate-spin" /> : <Search size={15} />}
+                {cargando ? 'Trayendo datos…' : 'Consultar datos'}
+                {!cargando && (
+                  <ChevronDown
+                    size={14}
+                    className={`transition-transform ${lista ? 'rotate-180' : ''}`}
+                  />
+                )}
+              </button>
+
+              {lista && !cargando && (
+                <div role="menu" className="mt-1 rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  {ORIGENES.map(({ id, etiqueta, detalle, icono: Icono }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => elegir(id)}
+                      title={detalle}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left hover:bg-slate-50 transition-colors"
+                    >
+                      <Icono size={17} className="shrink-0 text-primary-600" />
+                      <span className="text-sm text-slate-700 leading-tight">{etiqueta}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {cargando && (
               <div className="px-0.5 pt-2">

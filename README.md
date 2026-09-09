@@ -28,8 +28,8 @@ Consultar API Emisiones   ─┘
 
 De dónde vengan los datos es indiferente para el resto del sistema: los cuatro
 caminos desembocan en el mismo formato y la misma validación. Por eso hay **un
-solo botón**, «Consultar datos», que abre un asistente y pide lo que cada origen
-necesite, en el orden en que hace falta:
+solo botón**, «Consultar datos», que despliega los cuatro. Elegido uno, un
+diálogo pide lo que ese origen necesite, en el orden en que hace falta:
 
 ```
 archivo    →  soltar o buscar el archivo
