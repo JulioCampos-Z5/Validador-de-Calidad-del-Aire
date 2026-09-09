@@ -18,12 +18,13 @@
     "appId": "gob.jalisco.simaj.validador",
     "productName": "Validador Calidad del Aire",
     "directories": { "output": "../salida" },
-    "files": ["main.mjs", "package.json"],
+    "files": ["main.mjs", "package.json", "icono.png"],
     "extraResources": [
       { "from": "../backend/dist/validador-backend", "to": "backend-exe" },
       { "from": "../frontend/dist", "to": "frontend/dist" }
     ],
     "win": {
+      "icon": "icono.png",
       "target": [
         { "target": "portable", "arch": ["x64"] },
         { "target": "nsis", "arch": ["x64"] }

@@ -138,6 +138,9 @@ function crearVentana() {
     minWidth: 1000,
     backgroundColor: '#f8fafc',
     title: 'Validador de Calidad del Aire',
+    // El instalador ya pone el icono en el acceso directo; esto es para la
+    // ventana y la barra de tareas, que si no salen con el de Electron.
+    icon: join(aqui, 'icono.png'),
     webPreferences: { contextIsolation: true, nodeIntegration: false },
   });
 

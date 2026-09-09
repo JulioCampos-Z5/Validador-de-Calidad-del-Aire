@@ -2,9 +2,31 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
     <title>Validador de Calidad del Aire</title>
+    <meta
+      name="description"
+      content="Validación de datos de la red de monitoreo de calidad del aire de Jalisco: rangos, banderas y compleción según la NOM-156-SEMARNAT-2012."
+    />
+
+    <!-- El SVG sirve para cualquier tamaño y es lo que usan los navegadores de
+         escritorio; el PNG queda para iOS, que no lee el SVG. -->
+    <link rel="icon" type="image/svg+xml" href="/icono.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="application-name" content="Validador de Calidad del Aire" />
+    <meta name="apple-mobile-web-app-title" content="Validador" />
+
+    <!-- Al pegar el enlace en un chat o un correo se ve de qué es. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Validador de Calidad del Aire" />
+    <meta
+      property="og:description"
+      content="Validación de datos de la red de monitoreo de calidad del aire de Jalisco."
+    />
+    <meta property="og:image" content="/icono-512.png" />
   </head>
   <body>
     <div id="root"></div>
