@@ -65,7 +65,6 @@ export default function OrigenDatos() {
   } = useDatos();
   const { plegado, desplegar } = useMenu();
 
-  const [abierto, setAbierto] = useState(true);
   const [lista, setLista] = useState(false);
   const [modal, setModal] = useState<Origen | null>(null);
   const caja = useRef<HTMLDivElement>(null);
@@ -168,113 +167,99 @@ export default function OrigenDatos() {
   }
 
   return (
-    <div className="border-t border-slate-200">
-      <button
-        type="button"
-        onClick={() => setAbierto((v) => !v)}
-        aria-expanded={abierto}
-        className="w-full flex items-center justify-between px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide hover:bg-slate-50"
-      >
-        Datos
-        <ChevronDown size={15} className={`transition-transform ${abierto ? 'rotate-180' : ''}`} />
-      </button>
+    <div className="border-t border-slate-200 pt-3">
+      <SelectorPeriodo />
 
-      {abierto && (
-        <>
-          <SelectorPeriodo />
+      <div className="px-3 pb-4 space-y-1">
+        <div ref={caja}>
+          <button
+            type="button"
+            onClick={() => setLista((v) => !v)}
+            disabled={cargando}
+            aria-expanded={lista}
+            aria-haspopup="menu"
+            className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+          >
+            {cargando ? <RefreshCw size={15} className="animate-spin" /> : <Search size={15} />}
+            {cargando ? 'Trayendo datos…' : 'Consultar datos'}
+            {!cargando && (
+              <ChevronDown
+                size={14}
+                className={`transition-transform ${lista ? 'rotate-180' : ''}`}
+              />
+            )}
+          </button>
 
-          <div className="px-3 pb-4 space-y-1">
-            <div ref={caja}>
+          {lista && !cargando && (
+            <div role="menu" className="mt-1 rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+              {ORIGENES.map(({ id, etiqueta, detalle, icono: Icono }) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => elegir(id)}
+                  title={detalle}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left hover:bg-slate-50 transition-colors"
+                >
+                  <Icono size={17} className="shrink-0 text-primary-600" />
+                  <span className="text-sm text-slate-700 leading-tight">{etiqueta}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {cargando && (
+          <div className="px-0.5 pt-2">
+            {progresoSimaj ? (
+              <>
+                <div className="flex justify-between text-[11px] text-slate-500 mb-1 tabular-nums">
+                  <span className="truncate">
+                    {progresoSimaj.estacion} ({progresoSimaj.indice}/{progresoSimaj.estaciones})
+                  </span>
+                  <span>{pct}%</span>
+                </div>
+                <div className="h-1 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary-500 rounded-full transition-all"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="text-[11px] text-slate-500">Procesando…</p>
+            )}
+          </div>
+        )}
+
+        {descripcion && !cargando && (
+          <div className="mt-2 px-2.5 py-2 rounded-md bg-green-50 border border-green-200">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-[11px] text-green-800 leading-snug break-words min-w-0">
+                Cargado: {descripcion}
+              </p>
               <button
                 type="button"
-                onClick={() => setLista((v) => !v)}
-                disabled={cargando}
-                aria-expanded={lista}
-                aria-haspopup="menu"
-                className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+                onClick={limpiar}
+                title="Descartar los datos cargados"
+                className="text-green-700 hover:text-green-900 shrink-0"
               >
-                {cargando ? <RefreshCw size={15} className="animate-spin" /> : <Search size={15} />}
-                {cargando ? 'Trayendo datos…' : 'Consultar datos'}
-                {!cargando && (
-                  <ChevronDown
-                    size={14}
-                    className={`transition-transform ${lista ? 'rotate-180' : ''}`}
-                  />
-                )}
+                <X size={13} />
               </button>
-
-              {lista && !cargando && (
-                <div role="menu" className="mt-1 rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
-                  {ORIGENES.map(({ id, etiqueta, detalle, icono: Icono }) => (
-                    <button
-                      key={id}
-                      type="button"
-                      role="menuitem"
-                      onClick={() => elegir(id)}
-                      title={detalle}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-2 text-left hover:bg-slate-50 transition-colors"
-                    >
-                      <Icono size={17} className="shrink-0 text-primary-600" />
-                      <span className="text-sm text-slate-700 leading-tight">{etiqueta}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
-
-            {cargando && (
-              <div className="px-0.5 pt-2">
-                {progresoSimaj ? (
-                  <>
-                    <div className="flex justify-between text-[11px] text-slate-500 mb-1 tabular-nums">
-                      <span className="truncate">
-                        {progresoSimaj.estacion} ({progresoSimaj.indice}/{progresoSimaj.estaciones})
-                      </span>
-                      <span>{pct}%</span>
-                    </div>
-                    <div className="h-1 bg-slate-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary-500 rounded-full transition-all"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-[11px] text-slate-500">Procesando…</p>
-                )}
-              </div>
-            )}
-
-            {descripcion && !cargando && (
-              <div className="mt-2 px-2.5 py-2 rounded-md bg-green-50 border border-green-200">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-[11px] text-green-800 leading-snug break-words min-w-0">
-                    Cargado: {descripcion}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={limpiar}
-                    title="Descartar los datos cargados"
-                    className="text-green-700 hover:text-green-900 shrink-0"
-                  >
-                    <X size={13} />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* El error del asistente se ve dentro del propio asistente; este es
-                para cuando ya se cerró y se quiere volver a leer qué pasó. */}
-            {error && !cargando && !modal && (
-              <p className="mt-2 px-2.5 py-2 rounded-md bg-red-50 border border-red-200 text-[11px] text-red-700 leading-snug">
-                {error}
-              </p>
-            )}
-
-            {exportaciones}
           </div>
-        </>
+        )}
+
+        {/* El error del asistente se ve dentro del propio asistente; este es
+            para cuando ya se cerró y se quiere volver a leer qué pasó. */}
+        {error && !cargando && !modal && (
+          <p className="mt-2 px-2.5 py-2 rounded-md bg-red-50 border border-red-200 text-[11px] text-red-700 leading-snug">
+            {error}
+          </p>
       )}
+
+      {exportaciones}
+      </div>
 
       {dialogo}
     </div>
