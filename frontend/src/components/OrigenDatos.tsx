@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  RefreshCw, X, ChevronDown, FileDown, Table2, Database,
+  RefreshCw, X, ChevronDown, FileDown, Table2, Table,
   Upload, FileInput, DownloadCloud, Radio,
 } from 'lucide-react';
 import { useDatos, type Origen } from '../estado/DatosContexto';
@@ -146,7 +146,7 @@ export default function OrigenDatos() {
           aria-label="Consultar datos"
           className="p-3 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50"
         >
-          {cargando ? <RefreshCw size={20} className="animate-spin" /> : <Database size={20} />}
+          {cargando ? <RefreshCw size={20} className="animate-spin" /> : <Table size={20} />}
         </button>
 
         <SelectorPeriodo />
@@ -178,7 +178,7 @@ export default function OrigenDatos() {
             aria-haspopup="menu"
             className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
           >
-            {cargando ? <RefreshCw size={15} className="animate-spin" /> : <Database size={15} />}
+            {cargando ? <RefreshCw size={15} className="animate-spin" /> : <Table size={15} />}
             {cargando ? 'Trayendo datos…' : 'Consultar datos'}
             {!cargando && (
               <ChevronDown
