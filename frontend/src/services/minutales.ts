@@ -88,6 +88,7 @@ export const minutalesApi = {
   ): Promise<{ mir: Mir; fallas: Falla[] }> =>
     (await api.post<{ mir: Mir; fallas: Falla[] }>('/mir', { contaminantes, umbral })).data,
 
-  urlReporteCsv: (contaminantes: string[]): string =>
-    `/api/minutales/reporte.csv?contaminantes=${encodeURIComponent(contaminantes.join(','))}`,
+  /** El reporte completo: la tabla del MIR y las fallas, en dos hojas. */
+  urlReporteMir: (contaminantes: string[]): string =>
+    `/api/minutales/reporte.xlsx?contaminantes=${encodeURIComponent(contaminantes.join(','))}`,
 };

@@ -208,7 +208,8 @@ rangos y decimales que se usaron.
 | `GET` | `/api/minutales/progreso` | Avance de la descarga en curso |
 | `POST` | `/api/minutales/descargar` | Descargar del SIMAJ y validar |
 | `POST` | `/api/minutales/mir` | Recalcular el MIR sin volver a descargar |
-| `GET` | `/api/minutales/reporte.csv` | Exportar la tabla del MIR |
+| `GET` | `/api/minutales/reporte.xlsx` | Exportar el reporte: tabla del MIR y canales que fallan |
+| `GET` | `/api/minutales/reporte.csv` | Solo la tabla del MIR, para pegar en la hoja del área técnica |
 | `GET` | `/api/emisiones/sesion` | ¿Hay token vivo? |
 | `POST` | `/api/emisiones/login` | Correo y contraseña → token |
 | `POST` | `/api/emisiones/salir` | Cerrar sesión |

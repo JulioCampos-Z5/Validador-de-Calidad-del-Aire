@@ -51,7 +51,8 @@ escritorio/      App de escritorio (Electron)
 | `GET /api/minutales/progreso` | Avance de la descarga en curso |
 | `POST /api/minutales/descargar` | Descarga + valida. Misma respuesta que `validate/full`, más `mir` y `fallas` |
 | `POST /api/minutales/mir` | Recalcula el MIR con otra selección, sin volver a descargar |
-| `GET /api/minutales/reporte.csv` | Exporta la tabla del MIR |
+| `GET /api/minutales/reporte.xlsx` | Exporta el reporte completo: hoja `MIR` con la cobertura por estación y hoja `Fallas` con los canales por debajo del umbral |
+| `GET /api/minutales/reporte.csv` | Solo la tabla del MIR, para pegarla en la hoja del área técnica |
 
 **Rendimiento medido:** un mes de las 13 estaciones son ~9,400 archivos y tarda
 **unos 13 s** con la caché fría. Los `.lsi` se guardan en disco; el histórico no

@@ -116,8 +116,8 @@ export default function OrigenDatos() {
           dice qué horas debería haber en el periodo. */}
       {mir && (
         <a
-          href={minutalesApi.urlReporteCsv(contaminantesMir)}
-          title="Exportar reporte MIR. CSV con cobertura por estación."
+          href={minutalesApi.urlReporteMir(contaminantesMir)}
+          title="Exportar reporte MIR. Excel con la cobertura por estación y los canales que fallan."
           aria-label="Exportar reporte MIR"
           className={plegado
             ? clasesIcono()

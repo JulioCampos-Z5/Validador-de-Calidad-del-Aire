@@ -190,16 +190,15 @@ def recalcular_mir():
     return jsonify({'mir': mir, 'fallas': diagnostico_fallas(mir)})
 
 
-@bp.route('/reporte.csv', methods=['GET'])
-def reporte_csv():
-    """Exporta la tabla del MIR con el mismo aspecto que la hoja del área técnica."""
-    if _ultimo['df'] is None:
-        return jsonify({'error': 'Todavía no se ha descargado ningún periodo.'}), 409
+TIPOS_DE_FALLA = {
+    'caido': 'Caído',
+    'intermitente': 'Intermitente',
+    'sin_equipo': 'Sin equipo',
+}
 
-    contaminantes = request.args.get('contaminantes')
-    elegidos = contaminantes.split(',') if contaminantes else CONTAMINANTES_CRITERIO
-    mir = calcular_mir(_ultimo['df'], elegidos)
 
+def _tabla_mir(mir: dict) -> pd.DataFrame:
+    """La tabla del indicador, con el mismo aspecto que la hoja del área técnica."""
     filas = []
     for f in mir['estaciones']:
         fila = {'Estación': f['estacion']}
@@ -211,8 +210,86 @@ def reporte_csv():
         fila['Total'] = f['total']
         fila['Cumple'] = 'Si' if f['cumple'] else 'No'
         filas.append(fila)
+    return pd.DataFrame(filas)
 
-    df = pd.DataFrame(filas)
+
+def _tabla_fallas(fallas: list[dict]) -> pd.DataFrame:
+    """
+    Dónde está fallando cada estación, canal por canal.
+
+    Es la mitad accionable del reporte. La tabla del MIR dice que Vallarta se
+    queda en 60; esta dice cuál de sus canales lo hunde y si es una avería o un
+    equipo que no existe, que es lo que determina si hay que mandar a alguien.
+
+    Va en el mismo archivo que el indicador a propósito: quien recibe el
+    reporte para explicar un incumplimiento necesita las dos cosas, y en dos
+    archivos separados la segunda no se abre nunca.
+    """
+    if not fallas:
+        return pd.DataFrame(columns=[
+            'Estación', 'Contaminante', 'Tipo', 'Cobertura %', 'Detalle',
+            'Hunde a la estación',
+        ])
+
+    return pd.DataFrame([{
+        'Estación': f['estacion'],
+        'Contaminante': f['contaminante'],
+        'Tipo': TIPOS_DE_FALLA.get(f['tipo'], f['tipo']),
+        # Sin equipo no es 0% de cobertura: es que no hay nada que medir.
+        'Cobertura %': '' if f['cobertura'] is None else f['cobertura'],
+        'Detalle': f['detalle'],
+        'Hunde a la estación': 'Si' if f['hunde_a_la_estacion'] else 'No',
+    } for f in fallas])
+
+
+def _mir_pedido():
+    """El MIR del último periodo, con los contaminantes que pida la petición."""
+    contaminantes = request.args.get('contaminantes')
+    elegidos = contaminantes.split(',') if contaminantes else CONTAMINANTES_CRITERIO
+    return calcular_mir(_ultimo['df'], elegidos)
+
+
+@bp.route('/reporte.xlsx', methods=['GET'])
+def reporte_xlsx():
+    """
+    El reporte completo: el indicador y los canales que lo hunden.
+
+    Dos hojas en un solo archivo. Antes solo se exportaba la tabla del MIR, y
+    el diagnóstico de fallas —lo único que dice qué hay que ir a arreglar— se
+    quedaba en la pantalla.
+    """
+    if _ultimo['df'] is None:
+        return jsonify({'error': 'Todavía no se ha descargado ningún periodo.'}), 409
+
+    mir = _mir_pedido()
+    fallas = diagnostico_fallas(mir)
+
+    ruta = os.path.join(tempfile.gettempdir(), 'reporte_mir.xlsx')
+    with pd.ExcelWriter(ruta, engine='openpyxl') as escritor:
+        _tabla_mir(mir).to_excel(escritor, sheet_name='MIR', index=False)
+        _tabla_fallas(fallas).to_excel(escritor, sheet_name='Fallas', index=False)
+
+        # Un ancho decente: por defecto Excel corta los nombres de estación y
+        # los detalles, y un reporte que hay que ensanchar a mano para leerlo
+        # se lee menos.
+        for hoja, ancho in (('MIR', 12), ('Fallas', 22)):
+            escritor.sheets[hoja].column_dimensions['A'].width = ancho
+        escritor.sheets['Fallas'].column_dimensions['E'].width = 34
+
+    return send_file(ruta, as_attachment=True, download_name='reporte_mir.xlsx')
+
+
+@bp.route('/reporte.csv', methods=['GET'])
+def reporte_csv():
+    """
+    Solo la tabla del MIR, en CSV.
+
+    Se mantiene porque es lo que se pega tal cual en la hoja del área técnica;
+    para el reporte con las fallas está `/reporte.xlsx`.
+    """
+    if _ultimo['df'] is None:
+        return jsonify({'error': 'Todavía no se ha descargado ningún periodo.'}), 409
+
     ruta = os.path.join(tempfile.gettempdir(), 'reporte_mir.csv')
-    df.to_csv(ruta, index=False, encoding='utf-8-sig')
+    _tabla_mir(_mir_pedido()).to_csv(ruta, index=False, encoding='utf-8-sig')
     return send_file(ruta, as_attachment=True, download_name='reporte_mir.csv')
