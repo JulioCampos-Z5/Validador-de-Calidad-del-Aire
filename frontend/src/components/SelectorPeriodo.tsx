@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { diasDelPeriodo, useDatos } from '../estado/DatosContexto';
+import { clasesIcono, useMenu } from './menu';
 import CalendarioRango from './CalendarioRango';
 
 /**
@@ -15,23 +16,13 @@ import CalendarioRango from './CalendarioRango';
  * El rango se elige en un calendario aparte y no con dos `<input type="date">`:
  * en 256 px de ancho aquellos quedaban apretados, cambiaban de aspecto según el
  * navegador y obligaban a abrir dos veces sin ver nunca las dos fechas juntas.
+ * Los atajos de 7, 30 y 90 días viven ahí dentro, junto al calendario: son la
+ * misma decisión y estaban repartidos en dos sitios.
  *
  * No valida nada más allá de que el final sea posterior al inicio. Los topes
  * son de cada origen —la API de Emisiones no acepta más de un año, el SIMAJ
  * sí— y avisa cada panel, que es donde importan.
  */
-
-const ATAJOS: { etiqueta: string; dias: number }[] = [
-  { etiqueta: '7 días', dias: 7 },
-  { etiqueta: '30 días', dias: 30 },
-  { etiqueta: '90 días', dias: 90 },
-];
-
-function isoDias(dias: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - dias);
-  return d.toISOString().slice(0, 10);
-}
 
 /** `2026-09-08` -> `8 sep`. El año solo cuando no es el corriente. */
 function corta(iso: string): string {
@@ -45,12 +36,42 @@ function corta(iso: string): string {
 
 export default function SelectorPeriodo() {
   const { periodo, setPeriodo, cargando } = useDatos();
+  const { plegado } = useMenu();
   const [abierto, setAbierto] = useState(false);
 
   // Cuenta los dos extremos, igual que el calendario: si no, el mismo periodo
   // tendria dos numeros distintos segun donde se mire.
   const dias = diasDelPeriodo(periodo);
   const invertido = Number.isFinite(dias) && dias <= 0;
+
+  const calendario = abierto ? (
+    <CalendarioRango
+      desde={periodo.desde}
+      hasta={periodo.hasta}
+      onCerrar={() => setAbierto(false)}
+      onAceptar={(rango) => { setPeriodo(rango); setAbierto(false); }}
+    />
+  ) : null;
+
+  // Plegada, el calendario se abre directamente desde su icono: no tiene
+  // sentido desplegar la barra para pulsar otro botón que abre un diálogo.
+  if (plegado) {
+    return (
+      <div className="flex flex-col items-center">
+        <button
+          type="button"
+          disabled={cargando}
+          onClick={() => setAbierto(true)}
+          title={`Periodo: ${corta(periodo.desde)} — ${corta(periodo.hasta)} (${dias} días)`}
+          aria-label="Elegir el periodo"
+          className={`${clasesIcono()} disabled:opacity-50`}
+        >
+          <CalendarDays size={20} />
+        </button>
+        {calendario}
+      </div>
+    );
+  }
 
   return (
     <div className="px-3 pb-3">
@@ -72,27 +93,6 @@ export default function SelectorPeriodo() {
           </span>
         </button>
 
-        <div className="flex gap-1">
-          {ATAJOS.map(({ etiqueta, dias: d }) => {
-            const activo = periodo.desde === isoDias(d - 1) && periodo.hasta === isoDias(0);
-            return (
-              <button
-                key={d}
-                type="button"
-                disabled={cargando}
-                onClick={() => setPeriodo({ desde: isoDias(d - 1), hasta: isoDias(0) })}
-                className={`flex-1 px-1 py-1 rounded-md text-[11px] font-medium border transition-colors disabled:opacity-50 ${
-                  activo
-                    ? 'bg-primary-50 border-primary-300 text-primary-700'
-                    : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                {etiqueta}
-              </button>
-            );
-          })}
-        </div>
-
         {invertido && (
           <p className="text-[11px] text-amber-700 leading-snug">
             La fecha final debe ser posterior a la inicial.
@@ -100,14 +100,7 @@ export default function SelectorPeriodo() {
         )}
       </div>
 
-      {abierto && (
-        <CalendarioRango
-          desde={periodo.desde}
-          hasta={periodo.hasta}
-          onCerrar={() => setAbierto(false)}
-          onAceptar={(rango) => { setPeriodo(rango); setAbierto(false); }}
-        />
-      )}
+      {calendario}
     </div>
   );
 }

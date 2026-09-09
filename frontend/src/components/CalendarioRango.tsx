@@ -52,6 +52,17 @@ function celdasDelMes(mes: Date): (Date | null)[] {
   ];
 }
 
+/**
+ * Atajos para los periodos que se piden siempre. Viven aquí y no en el menú
+ * porque son la misma decisión que el calendario: tenerlos en dos sitios
+ * obligaba a mirar en ambos para saber qué periodo estaba puesto.
+ */
+const ATAJOS: { etiqueta: string; dias: number }[] = [
+  { etiqueta: '7 días', dias: 7 },
+  { etiqueta: '30 días', dias: 30 },
+  { etiqueta: '90 días', dias: 90 },
+];
+
 interface Props {
   desde: string;
   hasta: string;
@@ -66,6 +77,20 @@ export default function CalendarioRango({ desde, hasta, onAceptar, onCerrar }: P
   const [encima, setEncima] = useState<Date | null>(null);
 
   const hoy = useMemo(() => new Date(), []);
+
+  /**
+   * Un atajo deja el rango elegido, no lo aplica: sigue haciendo falta aceptar.
+   * Así se ve en el calendario qué se acaba de seleccionar antes de confirmar,
+   * y un clic de más no cambia el periodo sin querer.
+   */
+  const atajo = (dias: number) => {
+    const fin = new Date();
+    const ini = new Date();
+    ini.setDate(ini.getDate() - (dias - 1));
+    setInicio(ini);
+    setFin(fin);
+    setMes(new Date(ini.getFullYear(), ini.getMonth(), 1));
+  };
 
   // Escapar cierra el diálogo. Es lo que espera cualquiera que lo abra sin
   // querer, y evita tener que buscar la aspa con el ratón.
@@ -135,6 +160,19 @@ export default function CalendarioRango({ desde, hasta, onAceptar, onCerrar }: P
         </div>
 
         <div className="px-4 py-3">
+          <div className="flex gap-1 mb-3">
+            {ATAJOS.map(({ etiqueta, dias: d }) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => atajo(d)}
+                className="flex-1 px-2 py-1.5 rounded-md text-xs font-medium border border-slate-300 text-slate-600 bg-white hover:bg-slate-100 transition-colors"
+              >
+                {etiqueta}
+              </button>
+            ))}
+          </div>
+
           {/* Qué falta por pulsar, dicho en una línea. Sin esto, el segundo clic
               es adivinar si el calendario está esperando algo. */}
           <p className="text-xs text-slate-500 mb-3">

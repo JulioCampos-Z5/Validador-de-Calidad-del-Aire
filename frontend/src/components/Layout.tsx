@@ -1,17 +1,16 @@
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   Settings,
   Wind,
-  Menu,
-  X,
+  PanelLeft,
+  PanelLeftOpen,
   BarChart3,
   ScrollText,
-  PanelLeftOpen,
 } from 'lucide-react';
 import OrigenDatos from './OrigenDatos';
-import { useDatos } from '../estado/DatosContexto';
+import { MenuContexto, clasesIcono, type EstadoMenu } from './menu';
 import DescargarApp from './DescargarApp';
 
 interface LayoutProps {
@@ -27,29 +26,30 @@ const navItems = [
 
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
-  const isCharts = location.pathname === '/charts';
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { resultado } = useDatos();
+  // Plegada de entrada en todas las páginas. El contenido es lo que se viene a
+  // ver; el menú se despliega cuando hace falta y se vuelve a plegar.
+  const [plegado, setPlegado] = useState(true);
 
-  // En Graficas el menu viene plegado para dejarle todo el ancho a las
-  // graficas. Pero si no hay datos no hay nada que ensanchar, y la pagina ya no
-  // tiene area de carga propia: sin esto, el mensaje remitiria a un menu que no
-  // se ve. Solo se abre; nunca se cierra solo, para no pelearse con el usuario.
-  useEffect(() => {
-    if (isCharts && !resultado) setSidebarOpen(true);
-  }, [isCharts, resultado]);
+  const menu = useMemo<EstadoMenu>(
+    () => ({ plegado, desplegar: () => setPlegado(false) }),
+    [plegado],
+  );
 
   return (
+    <MenuContexto.Provider value={menu}>
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-slate-200 fixed top-0 left-0 right-0 z-30">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className={`p-2 rounded-lg hover:bg-slate-100 ${isCharts ? '' : 'lg:hidden'}`}
+              onClick={() => setPlegado((v) => !v)}
+              title={plegado ? 'Desplegar el menú' : 'Plegar el menú'}
+              aria-label={plegado ? 'Desplegar el menú' : 'Plegar el menú'}
+              aria-expanded={!plegado}
+              className="p-2 rounded-lg hover:bg-slate-100 text-slate-600"
             >
-              {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
+              {plegado ? <PanelLeftOpen size={24} /> : <PanelLeft size={24} />}
             </button>
             <div className="flex items-center gap-2">
               <Wind className="h-8 w-8 text-primary-600" />
@@ -69,70 +69,36 @@ export default function Layout({ children }: LayoutProps) {
         </div>
       </header>
 
-      {/* Carril de iconos: lo que queda del menú cuando está plegado.
-          Antes desaparecía del todo y había que recordar que el botón de arriba
-          lo traía de vuelta. Asomado, se ve dónde estás y se llega a cualquier
-          página en un clic, sin robarle ancho a las gráficas. */}
+      {/* UNA sola barra. Plegada deja los iconos; desplegada, los iconos con
+          etiqueta y sus paneles. No desaparece nunca, ni en el tablero: si se
+          va del todo hay que recordar dónde estaba el botón para traerla. */}
       <aside
-        className={`hidden lg:flex fixed top-0 left-0 z-10 h-full w-16 flex-col items-center gap-1 bg-white border-r border-slate-200 shadow-sm pt-20 transition-opacity ${
-          sidebarOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        className={`fixed top-0 left-0 z-20 h-full bg-white shadow-lg pt-16 transition-[width] duration-200 ease-in-out ${
+          plegado ? 'w-16' : 'w-64'
         }`}
       >
-        {navItems.map(({ path, label, icon: Icono }) => {
-          const activo = location.pathname === path;
-          return (
-            <Link
-              key={path}
-              to={path}
-              title={label}
-              aria-label={label}
-              className={`p-3 rounded-lg transition-colors ${
-                activo
-                  ? 'bg-primary-50 text-primary-700'
-                  : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'
-              }`}
-            >
-              <Icono size={20} />
-            </Link>
-          );
-        })}
-
-        <button
-          type="button"
-          onClick={() => setSidebarOpen(true)}
-          title="Abrir el menú"
-          aria-label="Abrir el menú"
-          className="mt-2 p-3 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-        >
-          <PanelLeftOpen size={20} />
-        </button>
-      </aside>
-
-      {/* Sidebar */}
-      <aside
-        className={`fixed top-0 left-0 z-20 h-full w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out pt-16 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } ${isCharts ? '' : 'lg:translate-x-0'}`}
-      >
         <div className="h-full overflow-y-auto pb-4">
-        <nav className="p-4 space-y-2">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = location.pathname === item.path;
-            
+        <nav className={plegado ? 'p-2 space-y-1 flex flex-col items-center' : 'p-4 space-y-2'}>
+          {navItems.map(({ path, label, icon: Icono }) => {
+            const activo = location.pathname === path;
+
+            // Plegada, el título del enlace es lo único que dice a dónde lleva.
             return (
               <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                  isActive
-                    ? 'bg-primary-50 text-primary-700 font-medium'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
+                key={path}
+                to={path}
+                title={label}
+                aria-label={label}
+                className={plegado
+                  ? clasesIcono(activo)
+                  : `flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                      activo
+                        ? 'bg-primary-50 text-primary-700 font-medium'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
               >
-                <Icon size={20} />
-                <span>{item.label}</span>
+                <Icono size={20} />
+                {!plegado && <span>{label}</span>}
               </Link>
             );
           })}
@@ -161,20 +127,13 @@ export default function Layout({ children }: LayoutProps) {
         </div>
       </aside>
 
-      {/* Overlay for mobile */}
-      {sidebarOpen && (
-        <div
-          className={`fixed inset-0 bg-black/20 z-10 ${isCharts ? '' : 'lg:hidden'}`}
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
       {/* Main Content */}
-      <main className={`${isCharts ? 'lg:ml-16' : 'lg:ml-64'} pt-16 min-h-screen`}>
+      <main className={`${plegado ? 'ml-16' : 'ml-64'} pt-16 min-h-screen transition-[margin] duration-200`}>
         <div className="p-6">
           {children}
         </div>
       </main>
     </div>
+    </MenuContexto.Provider>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { MonitorDown, ChevronDown } from 'lucide-react';
 import apiService, { type ArchivoApp } from '../services/api';
+import { clasesIcono, useMenu } from './menu';
 
 /**
  * Descarga de la app de escritorio, en el menú lateral.
@@ -21,6 +22,7 @@ function enEscritorio(): boolean {
 }
 
 export default function DescargarApp() {
+  const { plegado } = useMenu();
   const [archivos, setArchivos] = useState<ArchivoApp[]>([]);
   const [abierto, setAbierto] = useState(false);
 
@@ -34,6 +36,24 @@ export default function DescargarApp() {
   }, []);
 
   if (archivos.length === 0) return null;
+
+  if (plegado) {
+    return (
+      <div className="border-t border-slate-200 pt-2 flex flex-col items-center gap-1">
+        {archivos.map((a) => (
+          <a
+            key={a.nombre}
+            href={a.url}
+            title={`${a.etiqueta} · ${a.tamano_mb} MB. ${a.detalle}`}
+            aria-label={`Descargar ${a.etiqueta}`}
+            className={clasesIcono()}
+          >
+            <MonitorDown size={20} />
+          </a>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="border-t border-slate-200">

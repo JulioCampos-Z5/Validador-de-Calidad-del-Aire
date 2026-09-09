@@ -8,6 +8,7 @@ import apiService from '../services/api';
 import { minutalesApi, type Progreso } from '../services/minutales';
 import PanelEmisiones from './PanelEmisiones';
 import SelectorPeriodo from './SelectorPeriodo';
+import { clasesIcono, useMenu } from './menu';
 
 /**
  * Carga y exportación de datos, en el menú lateral.
@@ -96,6 +97,7 @@ export default function OrigenDatos() {
     resultado, mir, contaminantesMir, periodo,
   } = useDatos();
 
+  const { plegado, desplegar } = useMenu();
   const [abierto, setAbierto] = useState(true);
   const [panelSimaj, setPanelSimaj] = useState(false);
   const [panelEmisiones, setPanelEmisiones] = useState(false);
@@ -164,6 +166,71 @@ export default function OrigenDatos() {
   const pct = progreso && progreso.total > 0
     ? Math.round((progreso.hechos / progreso.total) * 100)
     : 0;
+
+  if (plegado) {
+    // Plegada se ven TODOS los iconos, no solo los de navegación: el periodo,
+    // los cuatro orígenes y las exportaciones disponibles. Un icono que
+    // desaparece al plegar es una función que deja de existir.
+    return (
+      <div className="border-t border-slate-200 pt-2 flex flex-col items-center gap-1">
+        <SelectorPeriodo />
+
+        {ORIGENES.map(({ id, etiqueta, detalle, icono: Icono }) => (
+          <button
+            key={id}
+            type="button"
+            disabled={cargando}
+            title={`${etiqueta}. ${detalle}`}
+            aria-label={etiqueta}
+            // Los paneles del SIMAJ y de Emisiones necesitan anchura, así que
+            // el icono despliega la barra y deja el panel abierto. Elegir un
+            // archivo, en cambio, abre el diálogo del sistema y no necesita
+            // nada más.
+            onClick={() => { if (id === 'simaj' || id === 'emisiones') desplegar(); elegir(id); }}
+            className={`${clasesIcono(origen === id)} disabled:opacity-50`}
+          >
+            <Icono size={20} />
+          </button>
+        ))}
+
+        {cargando && (
+          <span title="Descargando…" className="p-3 text-primary-600">
+            <RefreshCw size={20} className="animate-spin" />
+          </span>
+        )}
+
+        {resultado && !cargando && resultado.output_filename && (
+          <a
+            href={apiService.downloadFile(resultado.output_filename)}
+            title="Exportar validación. Excel con datos, banderas y resúmenes."
+            aria-label="Exportar validación"
+            className={clasesIcono()}
+          >
+            <FileDown size={20} />
+          </a>
+        )}
+
+        {resultado && !cargando && mir && (
+          <a
+            href={minutalesApi.urlReporteCsv(contaminantesMir)}
+            title="Exportar reporte MIR. CSV con cobertura por estación."
+            aria-label="Exportar reporte MIR"
+            className={clasesIcono()}
+          >
+            <Table2 size={20} />
+          </a>
+        )}
+
+        <input
+          ref={entrada}
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          onChange={alElegirArchivo}
+          className="hidden"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="border-t border-slate-200">
