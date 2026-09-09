@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   RefreshCw, X, ChevronDown, FileDown, Table2,
-  Upload, FileInput, DownloadCloud, Radio,
+  Upload, FileInput, DownloadCloud, Radio, FolderKanban,
 } from 'lucide-react';
-import IconoDatos from './IconoDatos';
 import { useDatos, type Origen } from '../estado/DatosContexto';
 import apiService from '../services/api';
 import { minutalesApi } from '../services/minutales';
@@ -147,7 +146,7 @@ export default function OrigenDatos() {
           aria-label="Consultar datos"
           className="p-3 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50"
         >
-          {cargando ? <RefreshCw size={20} className="animate-spin" /> : <IconoDatos size={20} />}
+          {cargando ? <RefreshCw size={20} className="animate-spin" /> : <FolderKanban size={20} />}
         </button>
 
         <SelectorPeriodo />
@@ -179,7 +178,7 @@ export default function OrigenDatos() {
             aria-haspopup="menu"
             className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
           >
-            {cargando ? <RefreshCw size={15} className="animate-spin" /> : <IconoDatos size={15} />}
+            {cargando ? <RefreshCw size={15} className="animate-spin" /> : <FolderKanban size={15} />}
             {cargando ? 'Trayendo datos…' : 'Consultar datos'}
             {!cargando && (
               <ChevronDown
