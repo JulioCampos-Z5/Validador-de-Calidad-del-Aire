@@ -136,8 +136,6 @@ export default function OrigenDatos() {
     // función que deja de existir.
     return (
       <div className="border-t border-slate-200 pt-2 flex flex-col items-center gap-1">
-        <SelectorPeriodo />
-
         <button
           type="button"
           // Plegada no hay sitio para la lista, y sacarla fuera la recortaría el
@@ -150,6 +148,8 @@ export default function OrigenDatos() {
         >
           {cargando ? <RefreshCw size={20} className="animate-spin" /> : <Database size={20} />}
         </button>
+
+        <SelectorPeriodo />
 
         {exportaciones}
 
@@ -168,9 +168,7 @@ export default function OrigenDatos() {
 
   return (
     <div className="border-t border-slate-200 pt-3">
-      <SelectorPeriodo />
-
-      <div className="px-3 pb-4 space-y-1">
+      <div className="px-3 pb-2 space-y-1">
         <div ref={caja}>
           <button
             type="button"
@@ -208,6 +206,8 @@ export default function OrigenDatos() {
             </div>
           )}
         </div>
+
+        <SelectorPeriodo />
 
         {cargando && (
           <div className="px-0.5 pt-2">
