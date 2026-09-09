@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState,
   type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import apiService, { type ValidationResponse } from '../services/api';
-import { minutalesApi, CONTAMINANTES_CRITERIO, type Mir, type Falla } from '../services/minutales';
+import { minutalesApi, CONTAMINANTES_CRITERIO, type Mir, type Falla, type Progreso } from '../services/minutales';
 import { emisionesApi, type SesionEmisiones } from '../services/emisiones';
 
 /**
@@ -85,6 +85,8 @@ interface Estado {
   sesionEmisiones: SesionEmisiones;
   /** Periodo elegido, común a todos los orígenes de red. */
   periodo: Periodo;
+  /** Avance de la descarga del SIMAJ en curso, o null si no hay ninguna. */
+  progresoSimaj: Progreso | null;
   setPeriodo: Dispatch<SetStateAction<Periodo>>;
   fallas: Falla[];
   contaminantesMir: string[];
@@ -180,6 +182,7 @@ export function DatosProvider({ children }: { children: ReactNode }) {
     activa: false, email: null, caduca: null, recordada: false,
   });
   const [periodo, setPeriodo] = useState<Periodo>(PERIODO_POR_DEFECTO);
+  const [progresoSimaj, setProgresoSimaj] = useState<Progreso | null>(null);
 
   // El token vive en el backend y sobrevive a un recargado de la pagina, asi
   // que al arrancar hay que preguntar si sigue vivo: si no, la interfaz
@@ -249,6 +252,20 @@ export function DatosProvider({ children }: { children: ReactNode }) {
     setCargando(true);
     setError(null);
     setExito(null);
+
+    // El sondeo del avance vive aquí y no en el menú porque acompaña a la
+    // descarga: quien la lance, desde donde la lance, ve lo mismo. Un mes son
+    // decenas de miles de peticiones y sin esto no hay forma de saber si sigue
+    // viva.
+    const sondeo = window.setInterval(async () => {
+      try {
+        const p = await minutalesApi.progreso();
+        setProgresoSimaj(p.activo ? p : null);
+      } catch {
+        // Un sondeo fallido no aborta la descarga; se reintenta solo.
+      }
+    }, 1000);
+
     try {
       const r = await minutalesApi.descargar(rangoConsultable(periodo), contaminantesMir, configBackend());
       setResultado(r);
@@ -264,6 +281,8 @@ export function DatosProvider({ children }: { children: ReactNode }) {
       const detalle = (e as { response?: { data?: { error?: string } } }).response?.data?.error;
       setError(detalle ?? 'No se pudo descargar del SIMAJ.');
     } finally {
+      window.clearInterval(sondeo);
+      setProgresoSimaj(null);
       setCargando(false);
     }
   }, [configBackend, contaminantesMir, periodo]);
@@ -331,12 +350,14 @@ export function DatosProvider({ children }: { children: ReactNode }) {
   const valor = useMemo<Estado>(() => ({
     resultado, mir, fallas, contaminantesMir, origen, descripcion,
     cargando, error, exito, revalidar, config, sesionEmisiones, periodo,
+    progresoSimaj,
     setConfig, setRevalidar, setError, setPeriodo,
     cargarArchivo, cargarSimaj, cargarEmisiones,
     entrarEmisiones, salirEmisiones, cambiarContaminantesMir, limpiar,
   }), [
     resultado, mir, fallas, contaminantesMir, origen, descripcion,
     cargando, error, exito, revalidar, config, sesionEmisiones, periodo,
+    progresoSimaj,
     cargarArchivo, cargarSimaj, cargarEmisiones,
     entrarEmisiones, salirEmisiones, cambiarContaminantesMir, limpiar,
   ]);

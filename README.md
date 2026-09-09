@@ -27,8 +27,18 @@ Consultar API Emisiones   ─┘
 | **API de Emisiones** | emisiones.jalisco.gob.mx, con token | Correo y contraseña |
 
 De dónde vengan los datos es indiferente para el resto del sistema: los cuatro
-caminos desembocan en el mismo formato y la misma validación. Por eso el origen
-se elige en el menú lateral y **no hay una pantalla por cada uno**.
+caminos desembocan en el mismo formato y la misma validación. Por eso hay **un
+solo botón**, «Consultar datos», que abre un asistente y pide lo que cada origen
+necesite, en el orden en que hace falta:
+
+```
+archivo    →  soltar o buscar el archivo
+SIMAJ      →  periodo → confirmar
+Emisiones  →  acceso (solo si no hay token) → periodo → confirmar
+```
+
+El acceso va primero porque sin token no hay nada que consultar, y descubrirlo
+después de elegir las fechas obligaría a repetirlas.
 
 El periodo también se elige una sola vez, arriba del menú, y lo comparten el
 SIMAJ y la API. Pedirle a cada fuente un tramo distinto sin darse cuenta era

@@ -1,233 +1,106 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import {
-  Upload, FileInput, DownloadCloud, RefreshCw, X,
-  ChevronDown, FileDown, Table2, Radio,
+  Search, RefreshCw, X, ChevronDown, FileDown, Table2, Database,
 } from 'lucide-react';
-import { useDatos, type Origen, type OrigenArchivo } from '../estado/DatosContexto';
+import { useDatos } from '../estado/DatosContexto';
 import apiService from '../services/api';
-import { minutalesApi, type Progreso } from '../services/minutales';
-import PanelEmisiones from './PanelEmisiones';
+import { minutalesApi } from '../services/minutales';
 import SelectorPeriodo from './SelectorPeriodo';
+import ModalDatos from './ModalDatos';
 import { clasesIcono, useMenu } from './menu';
 
 /**
- * Carga y exportación de datos, en el menú lateral.
+ * Bloque de datos del menú: traer datos y exportarlos.
  *
- * Va aquí y no dentro de una página porque el conjunto de datos es del sistema
- * entero, no de una pantalla: se carga una vez y tanto el tablero como las
- * gráficas leen lo mismo.
+ * Un solo botón. Antes había una lista de cuatro orígenes y cada uno desplegaba
+ * su panel dentro de una columna de 256 px, donde el calendario no cabía y el
+ * formulario de acceso quedaba apretado. Ahora el botón abre un asistente con
+ * espacio para lo que cada origen necesita — ver `ModalDatos`.
  *
- * Es un único acordeón y cada botón cabe en una línea: el verbo va en la propia
- * etiqueta ("Importar archivo ENVISTA") en vez de en un rótulo de sección
- * aparte. La explicación de cada opción vive en el tooltip, no debajo del
- * botón: en una barra de 256 px, tres líneas por opción convertían el menú en
- * un muro de texto.
+ * Lo que se queda aquí es el estado: qué hay cargado, cómo va la descarga y qué
+ * se puede exportar. Eso conviene tenerlo a la vista sin abrir nada.
  */
-
-const ORIGENES: {
-  id: Origen;
-  etiqueta: string;
-  detalle: string;
-  icono: typeof Upload;
-}[] = [
-  {
-    id: 'envista',
-    etiqueta: 'Importar archivo ENVISTA',
-    detalle: 'Trs.xlsx o .csv crudo. Se convierte y se valida.',
-    icono: Upload,
-  },
-  {
-    id: 'validado',
-    etiqueta: 'Importar archivo validado',
-    detalle: 'BD_{año}.xlsx o .csv procesado. Solo se muestra.',
-    icono: FileInput,
-  },
-  {
-    id: 'simaj',
-    etiqueta: 'Importar del SIMAJ',
-    detalle: 'Descarga directa de las 13 estaciones.',
-    icono: DownloadCloud,
-  },
-  {
-    id: 'emisiones',
-    etiqueta: 'Importar de Emisiones',
-    detalle: 'API de emisiones.jalisco.gob.mx. Pide iniciar sesión.',
-    icono: Radio,
-  },
-];
-
-/** Agrupa filas sin rótulo encima: la etiqueta de cada botón ya dice la acción. */
-function Grupo({ children }: { children: React.ReactNode }) {
-  return <div className="space-y-1 mt-1 first:mt-0">{children}</div>;
-}
-
-/** Fila de una línea. `detalle` no se pinta: va al tooltip del botón. */
-function Fila({
-  icono: Icono, etiqueta, detalle, activo, ...resto
-}: {
-  icono: typeof Upload;
-  etiqueta: string;
-  detalle: string;
-  activo?: boolean;
-} & (
-  | ({ as: 'boton' } & React.ButtonHTMLAttributes<HTMLButtonElement>)
-  | ({ as: 'enlace' } & React.AnchorHTMLAttributes<HTMLAnchorElement>)
-)) {
-  const clases = `w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors disabled:opacity-50 ${
-    activo ? 'bg-primary-50 text-primary-700' : 'text-slate-600 hover:bg-slate-100'
-  }`;
-  const contenido = (
-    <>
-      <Icono size={17} className="shrink-0" />
-      <span className="text-sm font-medium leading-tight min-w-0">{etiqueta}</span>
-    </>
-  );
-
-  if (resto.as === 'enlace') {
-    const { as: _, ...props } = resto;
-    return <a className={clases} title={detalle} {...props}>{contenido}</a>;
-  }
-  const { as: _, ...props } = resto;
-  return <button type="button" className={clases} title={detalle} {...props}>{contenido}</button>;
-}
 
 export default function OrigenDatos() {
   const {
-    cargarArchivo, cargarSimaj, cargando, origen, descripcion, error, limpiar,
-    resultado, mir, contaminantesMir, periodo,
+    cargando, descripcion, error, limpiar, resultado, mir, contaminantesMir,
+    progresoSimaj,
   } = useDatos();
+  const { plegado } = useMenu();
 
-  const { plegado, desplegar } = useMenu();
   const [abierto, setAbierto] = useState(true);
-  const [panelSimaj, setPanelSimaj] = useState(false);
-  const [panelEmisiones, setPanelEmisiones] = useState(false);
-  const [progreso, setProgreso] = useState<Progreso | null>(null);
-  const entrada = useRef<HTMLInputElement>(null);
-  const sondeo = useRef<number | null>(null);
+  const [modal, setModal] = useState(false);
 
-  // El sondeo se detiene siempre al desmontar: si no, seguiría corriendo y
-  // escribiría estado de un componente ya destruido.
-  useEffect(() => () => { if (sondeo.current) window.clearInterval(sondeo.current); }, []);
-
-  const elegir = (id: Origen) => {
-    if (cargando) return;
-    if (id === 'simaj') {
-      setPanelEmisiones(false);
-      setPanelSimaj((v) => !v);
-      return;
-    }
-    if (id === 'emisiones') {
-      setPanelSimaj(false);
-      setPanelEmisiones((v) => !v);
-      return;
-    }
-    setPanelSimaj(false);
-    setPanelEmisiones(false);
-    // El modo viaja en el propio input: el diálogo del sistema es asíncrono y
-    // guardarlo en estado abriría la puerta a que llegue el archivo con un modo
-    // ya cambiado.
-    if (entrada.current) {
-      entrada.current.dataset.modo = id;
-      entrada.current.click();
-    }
-  };
-
-  const alElegirArchivo = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const archivo = e.target.files?.[0];
-    const modo = e.target.dataset.modo as OrigenArchivo | undefined;
-    e.target.value = ''; // permite volver a elegir el mismo archivo
-    if (archivo && modo) cargarArchivo(archivo, modo);
-  };
-
-  // El SIMAJ acepta periodos largos, así que aquí solo estorba el rango
-  // imposible; el tope de 31 días es cosa de la API de Emisiones.
-  const periodoInvertido =
-    new Date(periodo.hasta).getTime() <= new Date(periodo.desde).getTime();
-
-  const descargar = async () => {
-    setProgreso(null);
-    sondeo.current = window.setInterval(async () => {
-      try {
-        const p = await minutalesApi.progreso();
-        setProgreso(p.activo ? p : null);
-      } catch {
-        // Un sondeo fallido no aborta la descarga; se reintenta solo.
-      }
-    }, 1000);
-    try {
-      await cargarSimaj();
-      setPanelSimaj(false);
-    } finally {
-      if (sondeo.current) window.clearInterval(sondeo.current);
-      setProgreso(null);
-    }
-  };
-
-  const pct = progreso && progreso.total > 0
-    ? Math.round((progreso.hechos / progreso.total) * 100)
+  const pct = progresoSimaj && progresoSimaj.total > 0
+    ? Math.round((progresoSimaj.hechos / progresoSimaj.total) * 100)
     : 0;
 
+  const dialogo = modal ? <ModalDatos onCerrar={() => setModal(false)} /> : null;
+
+  const exportaciones = resultado && !cargando ? (
+    <>
+      {resultado.output_filename && (
+        <a
+          href={apiService.downloadFile(resultado.output_filename)}
+          title="Exportar validación. Excel con datos, banderas y resúmenes."
+          aria-label="Exportar validación"
+          className={plegado
+            ? clasesIcono()
+            : 'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 hover:bg-slate-100 transition-colors'}
+        >
+          <FileDown size={plegado ? 20 : 17} className="shrink-0" />
+          {!plegado && <span className="text-sm font-medium">Exportar validación</span>}
+        </a>
+      )}
+
+      {/* El reporte MIR solo existe si los datos vienen del SIMAJ: un archivo no
+          dice qué horas debería haber en el periodo. */}
+      {mir && (
+        <a
+          href={minutalesApi.urlReporteCsv(contaminantesMir)}
+          title="Exportar reporte MIR. CSV con cobertura por estación."
+          aria-label="Exportar reporte MIR"
+          className={plegado
+            ? clasesIcono()
+            : 'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 hover:bg-slate-100 transition-colors'}
+        >
+          <Table2 size={plegado ? 20 : 17} className="shrink-0" />
+          {!plegado && <span className="text-sm font-medium">Exportar reporte MIR</span>}
+        </a>
+      )}
+    </>
+  ) : null;
+
   if (plegado) {
-    // Plegada se ven TODOS los iconos, no solo los de navegación: el periodo,
-    // los cuatro orígenes y las exportaciones disponibles. Un icono que
-    // desaparece al plegar es una función que deja de existir.
+    // Plegada se ven todos los iconos: el periodo, el de traer datos y las
+    // exportaciones disponibles. Un icono que desaparece al plegar es una
+    // función que deja de existir.
     return (
       <div className="border-t border-slate-200 pt-2 flex flex-col items-center gap-1">
         <SelectorPeriodo />
 
-        {ORIGENES.map(({ id, etiqueta, detalle, icono: Icono }) => (
-          <button
-            key={id}
-            type="button"
-            disabled={cargando}
-            title={`${etiqueta}. ${detalle}`}
-            aria-label={etiqueta}
-            // Los paneles del SIMAJ y de Emisiones necesitan anchura, así que
-            // el icono despliega la barra y deja el panel abierto. Elegir un
-            // archivo, en cambio, abre el diálogo del sistema y no necesita
-            // nada más.
-            onClick={() => { if (id === 'simaj' || id === 'emisiones') desplegar(); elegir(id); }}
-            className={`${clasesIcono(origen === id)} disabled:opacity-50`}
-          >
-            <Icono size={20} />
-          </button>
-        ))}
+        <button
+          type="button"
+          onClick={() => setModal(true)}
+          disabled={cargando}
+          title="Consultar datos: archivo, SIMAJ o API de Emisiones"
+          aria-label="Consultar datos"
+          className="p-3 rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors disabled:opacity-50"
+        >
+          {cargando ? <RefreshCw size={20} className="animate-spin" /> : <Database size={20} />}
+        </button>
 
-        {cargando && (
-          <span title="Descargando…" className="p-3 text-primary-600">
-            <RefreshCw size={20} className="animate-spin" />
-          </span>
+        {exportaciones}
+
+        {descripcion && !cargando && (
+          <span
+            title={`Cargado: ${descripcion}`}
+            className="mt-1 h-2 w-2 rounded-full bg-green-500"
+            aria-label={`Cargado: ${descripcion}`}
+          />
         )}
 
-        {resultado && !cargando && resultado.output_filename && (
-          <a
-            href={apiService.downloadFile(resultado.output_filename)}
-            title="Exportar validación. Excel con datos, banderas y resúmenes."
-            aria-label="Exportar validación"
-            className={clasesIcono()}
-          >
-            <FileDown size={20} />
-          </a>
-        )}
-
-        {resultado && !cargando && mir && (
-          <a
-            href={minutalesApi.urlReporteCsv(contaminantesMir)}
-            title="Exportar reporte MIR. CSV con cobertura por estación."
-            aria-label="Exportar reporte MIR"
-            className={clasesIcono()}
-          >
-            <Table2 size={20} />
-          </a>
-        )}
-
-        <input
-          ref={entrada}
-          type="file"
-          accept=".xlsx,.xls,.csv"
-          onChange={alElegirArchivo}
-          className="hidden"
-        />
+        {dialogo}
       </div>
     );
   }
@@ -247,120 +120,73 @@ export default function OrigenDatos() {
       {abierto && (
         <>
           <SelectorPeriodo />
-          <div className="px-3 pb-4">
-          <input
-            ref={entrada}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            onChange={alElegirArchivo}
-            className="hidden"
-          />
 
-          <Grupo>
-            {ORIGENES.map(({ id, etiqueta, detalle, icono }) => (
-              <Fila
-                key={id}
-                as="boton"
-                icono={icono}
-                etiqueta={etiqueta}
-                detalle={detalle}
-                activo={origen === id}
-                disabled={cargando}
-                onClick={() => elegir(id)}
-              />
-            ))}
+          <div className="px-3 pb-4 space-y-1">
+            <button
+              type="button"
+              onClick={() => setModal(true)}
+              disabled={cargando}
+              className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-md bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+            >
+              {cargando ? <RefreshCw size={15} className="animate-spin" /> : <Search size={15} />}
+              {cargando ? 'Trayendo datos…' : 'Consultar datos'}
+            </button>
 
-            {panelSimaj && (
-              <div className="mt-2 px-2.5 py-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                {/* Sin selector de fechas propio: el periodo se elige arriba,
-                    una sola vez y para todos los orígenes. */}
-                <button
-                  type="button"
-                  onClick={descargar}
-                  disabled={cargando || periodoInvertido}
-                  className="w-full inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-md bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
-                >
-                  {cargando ? <RefreshCw size={14} className="animate-spin" /> : <DownloadCloud size={14} />}
-                  {cargando ? 'Descargando…' : 'Descargar'}
-                </button>
+            {cargando && (
+              <div className="px-0.5 pt-2">
+                {progresoSimaj ? (
+                  <>
+                    <div className="flex justify-between text-[11px] text-slate-500 mb-1 tabular-nums">
+                      <span className="truncate">
+                        {progresoSimaj.estacion} ({progresoSimaj.indice}/{progresoSimaj.estaciones})
+                      </span>
+                      <span>{pct}%</span>
+                    </div>
+                    <div className="h-1 bg-slate-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-primary-500 rounded-full transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-[11px] text-slate-500">Procesando…</p>
+                )}
               </div>
             )}
 
-            {panelEmisiones && <PanelEmisiones />}
-          </Grupo>
-
-          {cargando && (
-            <div className="px-2.5 pt-3">
-              {progreso ? (
-                <>
-                  <div className="flex justify-between text-[11px] text-slate-500 mb-1 tabular-nums">
-                    <span className="truncate">
-                      {progreso.estacion} ({progreso.indice}/{progreso.estaciones})
-                    </span>
-                    <span>{pct}%</span>
-                  </div>
-                  <div className="h-1 bg-slate-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-primary-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                  </div>
-                </>
-              ) : (
-                <p className="text-[11px] text-slate-500">Procesando…</p>
-              )}
-            </div>
-          )}
-
-          {descripcion && !cargando && (
-            <div className="mx-2.5 mt-3 px-2.5 py-2 rounded-md bg-green-50 border border-green-200">
-              <div className="flex items-start justify-between gap-2">
-                <p className="text-[11px] text-green-800 leading-snug break-words min-w-0">
-                  Cargado: {descripcion}
-                </p>
-                <button
-                  type="button"
-                  onClick={limpiar}
-                  title="Descartar los datos cargados"
-                  className="text-green-700 hover:text-green-900 shrink-0"
-                >
-                  <X size={13} />
-                </button>
+            {descripcion && !cargando && (
+              <div className="mt-2 px-2.5 py-2 rounded-md bg-green-50 border border-green-200">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[11px] text-green-800 leading-snug break-words min-w-0">
+                    Cargado: {descripcion}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={limpiar}
+                    title="Descartar los datos cargados"
+                    className="text-green-700 hover:text-green-900 shrink-0"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {error && !cargando && (
-            <p className="mx-2.5 mt-3 px-2.5 py-2 rounded-md bg-red-50 border border-red-200 text-[11px] text-red-700 leading-snug">
-              {error}
-            </p>
-          )}
+            {/* El error del asistente se ve dentro del propio asistente; este es
+                para cuando ya se cerró y se quiere volver a leer qué pasó. */}
+            {error && !cargando && !modal && (
+              <p className="mt-2 px-2.5 py-2 rounded-md bg-red-50 border border-red-200 text-[11px] text-red-700 leading-snug">
+                {error}
+              </p>
+            )}
 
-          {resultado && !cargando && (
-            <Grupo>
-              {resultado.output_filename && (
-                <Fila
-                  as="enlace"
-                  href={apiService.downloadFile(resultado.output_filename)}
-                  icono={FileDown}
-                  etiqueta="Exportar validación"
-                  detalle="Excel con datos, banderas y resúmenes."
-                />
-              )}
-
-              {/* El reporte MIR solo existe si los datos vienen del SIMAJ: un
-                  archivo no dice qué horas debería haber en el periodo. */}
-              {mir && (
-                <Fila
-                  as="enlace"
-                  href={minutalesApi.urlReporteCsv(contaminantesMir)}
-                  icono={Table2}
-                  etiqueta="Exportar reporte MIR"
-                  detalle="CSV con cobertura por estación y cumplimiento."
-                />
-              )}
-            </Grupo>
-          )}
+            {exportaciones}
           </div>
         </>
       )}
+
+      {dialogo}
     </div>
   );
 }
