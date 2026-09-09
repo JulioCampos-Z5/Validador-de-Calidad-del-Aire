@@ -29,7 +29,34 @@ export type OrigenArchivo = Extract<Origen, 'envista' | 'validado'>;
  */
 export interface Periodo {
   desde: string;
+  /** Inclusivo: el dia elegido entra en la consulta. Ver `rangoConsultable`. */
   hasta: string;
+}
+
+/**
+ * Pasa el periodo que se ve en pantalla al rango que esperan los backends.
+ *
+ * En el calendario, pulsar el 5 y el 20 significa «del 5 al 20, ambos
+ * incluidos» — es lo que entiende cualquiera al marcar dos dias. Los backends,
+ * en cambio, tratan `hasta` como excluyente, que es lo correcto para un rango
+ * de horas.
+ *
+ * Traducir aqui, en el borde, evita el error silencioso que habia antes: elegir
+ * «1 a 7 de septiembre» devolvia datos hasta el 6 y nadie se enteraba de que
+ * faltaba el ultimo dia.
+ */
+export function rangoConsultable(periodo: Periodo): { desde: string; hasta: string } {
+  const fin = new Date(`${periodo.hasta}T00:00:00`);
+  fin.setDate(fin.getDate() + 1);
+  const iso = `${fin.getFullYear()}-${String(fin.getMonth() + 1).padStart(2, '0')}-${String(fin.getDate()).padStart(2, '0')}`;
+  return { desde: periodo.desde, hasta: iso };
+}
+
+/** Dias que abarca el periodo, contando los dos extremos. */
+export function diasDelPeriodo(periodo: Periodo): number {
+  const ms = new Date(`${periodo.hasta}T00:00:00`).getTime()
+    - new Date(`${periodo.desde}T00:00:00`).getTime();
+  return Math.round(ms / 86_400_000) + 1;
 }
 
 export interface ConfigValidacion {
@@ -127,7 +154,7 @@ function isoDias(dias: number): string {
  * mismo periodo inicial sirve para los dos origenes sin que ninguno arranque
  * en un estado invalido.
  */
-export const PERIODO_POR_DEFECTO: Periodo = { desde: isoDias(30), hasta: isoDias(0) };
+export const PERIODO_POR_DEFECTO: Periodo = { desde: isoDias(29), hasta: isoDias(0) };
 
 const Contexto = createContext<Estado | null>(null);
 
@@ -223,7 +250,7 @@ export function DatosProvider({ children }: { children: ReactNode }) {
     setError(null);
     setExito(null);
     try {
-      const r = await minutalesApi.descargar(periodo, contaminantesMir, configBackend());
+      const r = await minutalesApi.descargar(rangoConsultable(periodo), contaminantesMir, configBackend());
       setResultado(r);
       setMir(r.mir ?? null);
       setFallas(r.fallas ?? []);
@@ -263,8 +290,9 @@ export function DatosProvider({ children }: { children: ReactNode }) {
     try {
       // El backend de Emisiones espera la hora explícita; el selector da solo
       // el día, y el día empieza a las 00:00.
+      const rango = rangoConsultable(periodo);
       const r = await emisionesApi.descargar(
-        { desde: `${periodo.desde} 00:00`, hasta: `${periodo.hasta} 00:00` },
+        { desde: `${rango.desde} 00:00`, hasta: `${rango.hasta} 00:00` },
         configBackend(),
       );
       setResultado(r);

@@ -221,12 +221,23 @@ def _clave(texto: Any) -> str:
     return _clave_normalizada(texto if isinstance(texto, str) else str(texto))
 
 
-def _sesion_http() -> requests.Session:
+def _sesion_http(concurrencia: int = CONCURRENCIA) -> requests.Session:
+    """
+    Sesión con el pool dimensionado para los bloques que van en paralelo.
+
+    Ver la nota equivalente en minutales/cliente.py: con menos conexiones que
+    hilos, requests las descarta y las rehace, y urllib3 lo avisa una vez por
+    descarte.
+    """
     s = requests.Session()
     s.headers.update({
         'User-Agent': 'validador-calidad-aire/1.0',
         'Accept': 'application/json',
     })
+    adaptador = requests.adapters.HTTPAdapter(
+        pool_connections=concurrencia, pool_maxsize=concurrencia)
+    s.mount('https://', adaptador)
+    s.mount('http://', adaptador)
     return s
 
 

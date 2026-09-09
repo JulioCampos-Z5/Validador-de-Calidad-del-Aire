@@ -11,7 +11,7 @@ import unittest
 
 import pandas as pd
 
-from app import (RANGOS, aplicar_decimales, validar_rangos,
+from app import (RANGOS, aplicar_decimales, marcar_huecos, validar_rangos,
                  validar_series_temporales, validar_temperatura_interna,
                  _amplitud_circular)
 
@@ -266,6 +266,59 @@ class AmplitudCircular(unittest.TestCase):
 
     def test_un_solo_angulo(self):
         self.assertAlmostEqual(_amplitud_circular([180]), 0.0)
+
+
+class HuecosConBandera(unittest.TestCase):
+    """
+    Una celda en blanco no dice nada: no se distingue el dato que falta del que
+    nadie revisó. El 10.2.1 de la NOM pide bandera en todos.
+    """
+
+    def test_hueco_de_un_canal_que_si_mide_es_ND(self):
+        df = horas(n=3, O3=[0.02, None, 0.03])
+        r = marcar_huecos(df)
+        self.assertEqual(r.loc[1, 'O3'], 'ND')
+        self.assertEqual(r.loc[0, 'O3'], 0.02)
+
+    def test_canal_sin_una_sola_medicion_es_SE(self):
+        """
+        Sin equipo no es lo mismo que averiado: confundirlos haría que una
+        estación sin sensor de PM pareciera una con el sensor roto todo el año.
+        """
+        df = horas(n=3, O3=0.02, SO2=None)
+        r = marcar_huecos(df)
+        self.assertEqual(list(r['SO2']), ['SE'] * 3)
+
+    def test_una_bandera_no_cuenta_como_medicion(self):
+        """
+        Si lo único que hay en la columna son banderas, el equipo no entregó un
+        solo dato: el canal está sin equipo, no con huecos sueltos.
+        """
+        df = horas(n=3, CO=['IR', None, 'IR'])
+        r = marcar_huecos(df)
+        self.assertEqual(r.loc[1, 'CO'], 'SE')
+
+    def test_cada_estacion_se_juzga_por_separado(self):
+        """Que una estación tenga el sensor no dice nada de las demás."""
+        a = horas(estacion='MIR', n=2, SO2=[0.01, None])
+        b = horas(estacion='CEN', n=2, SO2=[None, None])
+        r = marcar_huecos(pd.concat([a, b], ignore_index=True))
+        self.assertEqual(r.loc[1, 'SO2'], 'ND', 'MIR sí mide SO2')
+        self.assertEqual(list(r.loc[2:3, 'SO2']), ['SE', 'SE'], 'CEN no')
+
+    def test_no_toca_los_identificadores(self):
+        df = horas(n=2, O3=0.02)
+        r = marcar_huecos(df)
+        self.assertEqual(list(r['STATION']), ['MIR', 'MIR'])
+        self.assertEqual(list(r['HOUR']), [0, 1])
+
+    def test_la_cadena_vacia_tambien_es_un_hueco(self):
+        """Según de dónde vengan los datos, el hueco llega como '' o como None."""
+        df = horas(n=2, O3=[0.02, ''])
+        self.assertEqual(marcar_huecos(df).loc[1, 'O3'], 'ND')
+
+    def test_dataframe_vacio_no_revienta(self):
+        self.assertTrue(marcar_huecos(pd.DataFrame()).empty)
 
 
 class Decimales(unittest.TestCase):

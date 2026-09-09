@@ -116,11 +116,17 @@ es la NOM-156-SEMARNAT-2012.
 | **Viento sin variación** | Anemómetro o veleta clavados durante horas | `IO` |
 | **Temperatura externa** | Saltos imposibles entre horas, o serie demasiado plana | `IO` |
 | **Presión barométrica** | Cambios bruscos en 3 h — *desactivada por defecto* | `IO` |
+| **Huecos** | Celdas sin dato: `SE` si la estación no mide ese parámetro en todo el periodo, `ND` si es un hueco suelto | `ND` `SE` |
 
 Las cuatro últimas parten de la misma idea: **un sensor averiado no deja de dar
 números, da números plausibles**; lo que lo delata es que no varían. Sobre un
 mes real señalaron una veleta clavada el 73.7% de las horas y dos piranómetros
 que reportan radiación de día pleno de madrugada.
+
+**Ninguna celda queda en blanco.** El 10.2.1 de la NOM pide bandera en todos los
+datos, y una celda vacía no distingue el dato que falta del que nadie revisó.
+Se separan los dos casos porque llevan a acciones distintas: `SE` es que ahí no
+hay instrumento; `ND` es que el instrumento no reportó esa hora.
 
 Todas se activan y ajustan desde la pantalla del tablero. El detalle de cada
 umbral, y por qué la de presión viene apagada, está en
@@ -133,6 +139,18 @@ umbral, y por qué la de presión viene apagada, está en
 | `IR` Fuera de rango | `IO` Inválido por operador | `IF` Falla del equipo | `IC` Calibración |
 | `ND` Sin dato | `DS` Dato sospechoso | `VZ` Igualado al límite de detección | `VE` Valor extraordinario |
 | `SE` Sin equipo | `NE` No existía la estación | | |
+
+---
+
+## Registros del servidor
+
+Una pantalla con los últimos errores y avisos del backend, con su traza
+completa. Existe porque en un servidor —y más dentro de un contenedor— la salida
+estándar no la ve nadie: antes había que entrar por SSH cada vez que alguien
+decía «no funciona».
+
+Es un anillo en memoria de los últimos 300, así que se pierde al reiniciar. Para
+auditoría están los logs del contenedor, que siguen recibiéndolo todo.
 
 ---
 
@@ -174,6 +192,8 @@ rangos y decimales que se usaron.
 | `POST` | `/api/preview-validated` | Leer un archivo ya validado sin tocarlo |
 | `GET` | `/api/download/<archivo>` | Descargar el Excel generado |
 | `GET` | `/api/app-escritorio` | Ejecutables disponibles para descargar |
+| `GET` | `/api/registros` | Últimos errores y avisos del servidor |
+| `DELETE` | `/api/registros` | Vaciar esa lista |
 | `GET` | `/api/minutales/estaciones` | Las 13 estaciones publicadas |
 | `GET` | `/api/minutales/progreso` | Avance de la descarga en curso |
 | `POST` | `/api/minutales/descargar` | Descargar del SIMAJ y validar |
@@ -196,16 +216,17 @@ los datos.
 
 ```
 backend/            API Flask; toda la lógica de validación vive en app.py
+├── registros.py    Errores del servidor en memoria, para verlos desde la web
 ├── minutales/      Descarga del SIMAJ, indicador MIR y reporte de fallas
 ├── emisiones/      Cliente de la API de Emisiones, sesión y caché
 ├── pruebas/        106 pruebas con unittest
 └── validador-backend.spec   Empaquetado con PyInstaller
 
 frontend/           React + TypeScript + Vite + Tailwind
-├── components/     Menú de datos, selector de periodo, tablas y gráficas
+├── components/     Menú de datos, calendario de periodo, tablas y gráficas
 ├── estado/         Conjunto de datos y configuración compartidos
 ├── services/       Clientes de la API
-└── pages/          Tablero, Gráficas y Parámetros
+└── pages/          Tablero, Gráficas, Parámetros y Registros
 
 escritorio/         Electron: arranca el backend y abre la ventana
 salida/             Ejecutables compilados (no versionado)

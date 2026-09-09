@@ -69,6 +69,18 @@ export interface StatsResponse {
   estadisticas_detalladas: any[];
 }
 
+export interface RegistroServidor {
+  id: number;
+  /** ISO-8601 con segundos. */
+  momento: string;
+  nivel: 'ERROR' | 'WARNING' | string;
+  /** Que logger lo emitio: 'validador', 'werkzeug', 'requests'... */
+  origen: string;
+  mensaje: string;
+  /** La traza completa, si el registro venia de una excepcion. */
+  traza: string | null;
+}
+
 export interface ArchivoApp {
   nombre: string;
   etiqueta: string;
@@ -80,6 +92,21 @@ export interface ArchivoApp {
 
 // Servicios
 export const apiService = {
+  /**
+   * Errores y avisos del backend. Existe para no tener que entrar por SSH al
+   * servidor cada vez que alguien dice que algo no funciona.
+   */
+  registros: async (nivel?: string): Promise<{
+    registros: RegistroServidor[]; total: number; capacidad: number;
+  }> => {
+    const response = await api.get('/registros', { params: { nivel, limite: 200 } });
+    return response.data;
+  },
+
+  limpiarRegistros: async (): Promise<void> => {
+    await api.delete('/registros');
+  },
+
   /** Ejecutables de la app de escritorio disponibles en este servidor. */
   appEscritorio: async (): Promise<{ disponible: boolean; archivos: ArchivoApp[] }> => {
     const response = await api.get('/app-escritorio');

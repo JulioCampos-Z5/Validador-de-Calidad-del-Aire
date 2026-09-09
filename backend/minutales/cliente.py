@@ -98,9 +98,22 @@ class _ListadoIIS(HTMLParser):
                 self.enlaces.append(valor)
 
 
-def _sesion() -> requests.Session:
+def _sesion(concurrencia: int = 25) -> requests.Session:
+    """
+    Sesión con el pool de conexiones dimensionado para los hilos que la usan.
+
+    Por defecto, requests guarda 10 conexiones por host. Con 25 hilos pidiendo a
+    la vez, las 15 sobrantes se descartan y se rehacen en la siguiente petición:
+    un saludo TCP y un TLS completos por cada archivo, miles de veces. Además
+    urllib3 lo avisa en cada descarte, y esos avisos ahogaban el registro de
+    errores.
+    """
     s = requests.Session()
     s.headers.update({'User-Agent': 'validador-calidad-aire/1.0'})
+    adaptador = requests.adapters.HTTPAdapter(
+        pool_connections=concurrencia, pool_maxsize=concurrencia)
+    s.mount('https://', adaptador)
+    s.mount('http://', adaptador)
     return s
 
 
@@ -214,7 +227,7 @@ def descargar(
     una hora ya publicada no se reescribe. Sin caché, cada corrida repetiría
     decenas de miles de peticiones para nada.
     """
-    sesion = _sesion()
+    sesion = _sesion(concurrencia)
     lista = list(estaciones_pedidas) if estaciones_pedidas else estaciones(sesion)
 
     if desde is None:

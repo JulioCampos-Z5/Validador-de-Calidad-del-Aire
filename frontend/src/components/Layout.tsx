@@ -6,7 +6,9 @@ import {
   Wind,
   Menu,
   X,
-  BarChart3
+  BarChart3,
+  ScrollText,
+  PanelLeftOpen,
 } from 'lucide-react';
 import OrigenDatos from './OrigenDatos';
 import { useDatos } from '../estado/DatosContexto';
@@ -20,6 +22,7 @@ const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/charts', label: 'Gráficas', icon: BarChart3 },
   { path: '/config', label: 'Parámetros', icon: Settings },
+  { path: '/registros', label: 'Registros', icon: ScrollText },
 ];
 
 export default function Layout({ children }: LayoutProps) {
@@ -65,6 +68,45 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </div>
       </header>
+
+      {/* Carril de iconos: lo que queda del menú cuando está plegado.
+          Antes desaparecía del todo y había que recordar que el botón de arriba
+          lo traía de vuelta. Asomado, se ve dónde estás y se llega a cualquier
+          página en un clic, sin robarle ancho a las gráficas. */}
+      <aside
+        className={`hidden lg:flex fixed top-0 left-0 z-10 h-full w-16 flex-col items-center gap-1 bg-white border-r border-slate-200 shadow-sm pt-20 transition-opacity ${
+          sidebarOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        }`}
+      >
+        {navItems.map(({ path, label, icon: Icono }) => {
+          const activo = location.pathname === path;
+          return (
+            <Link
+              key={path}
+              to={path}
+              title={label}
+              aria-label={label}
+              className={`p-3 rounded-lg transition-colors ${
+                activo
+                  ? 'bg-primary-50 text-primary-700'
+                  : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'
+              }`}
+            >
+              <Icono size={20} />
+            </Link>
+          );
+        })}
+
+        <button
+          type="button"
+          onClick={() => setSidebarOpen(true)}
+          title="Abrir el menú"
+          aria-label="Abrir el menú"
+          className="mt-2 p-3 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        >
+          <PanelLeftOpen size={20} />
+        </button>
+      </aside>
 
       {/* Sidebar */}
       <aside
@@ -128,7 +170,7 @@ export default function Layout({ children }: LayoutProps) {
       )}
 
       {/* Main Content */}
-      <main className={`${isCharts ? '' : 'lg:ml-64'} pt-16 min-h-screen`}>
+      <main className={`${isCharts ? 'lg:ml-16' : 'lg:ml-64'} pt-16 min-h-screen`}>
         <div className="p-6">
           {children}
         </div>

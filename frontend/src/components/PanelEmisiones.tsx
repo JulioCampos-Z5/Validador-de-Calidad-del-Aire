@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { LogIn, LogOut, RefreshCw, Search, AlertCircle, ShieldCheck } from 'lucide-react';
-import { useDatos } from '../estado/DatosContexto';
+import { diasDelPeriodo, useDatos } from '../estado/DatosContexto';
 import { DIAS_AVISO, DIAS_MAXIMOS } from '../services/emisiones';
 
 /**
@@ -127,9 +127,7 @@ function Consulta() {
   // que sea legal PARA ESTA API, y se avisa —sin bloquear— de que un periodo
   // largo tarda. Un aviso que impide seguir obliga a adivinar el limite; uno
   // que informa deja decidir con el dato delante.
-  const dias = Math.round(
-    (new Date(periodo.hasta).getTime() - new Date(periodo.desde).getTime()) / 86_400_000,
-  );
+  const dias = diasDelPeriodo(periodo);
   const rangoValido = Number.isFinite(dias) && dias > 0 && dias <= DIAS_MAXIMOS;
   const rangoLargo = rangoValido && dias > DIAS_AVISO;
 

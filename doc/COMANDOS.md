@@ -228,6 +228,18 @@ curl http://localhost:8000/api/emisiones/sesion
 curl http://localhost:8000/api/app-escritorio
 ```
 
+Ver los últimos errores del servidor sin abrir la interfaz:
+
+```bash
+curl "http://localhost:8000/api/registros?limite=20"
+```
+
+Vaciarlos antes de reproducir un fallo:
+
+```bash
+curl -X DELETE http://localhost:8000/api/registros
+```
+
 Ver la respuesta cruda de la API de Emisiones, para diagnosticar un cambio de
 formato — requiere sesión abierta:
 

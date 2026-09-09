@@ -21,6 +21,11 @@ warnings.filterwarnings('ignore')
 app = Flask(__name__)
 CORS(app)
 
+# Los avisos y errores se quedan ademas en memoria para poder verlos desde la
+# interfaz. En un servidor nadie mira la salida estandar. Ver registros.py.
+import registros
+registros.instalar()
+
 # Integracion con los minutales del SIMAJ (blueprint aparte, ver minutales/).
 from minutales.rutas import bp as bp_minutales
 app.register_blueprint(bp_minutales)
@@ -844,6 +849,59 @@ def aplicar_decimales(df):
     return df_formateado
 
 
+def marcar_huecos(df, columnas=None):
+    """
+    Pone bandera a las celdas vacías, que hasta ahora se quedaban en blanco.
+
+    La NOM-156 no deja margen: el punto 10.2.1 pide identificar con bandera
+    TODOS los datos, y un hueco sin marcar no se distingue de un dato que nadie
+    reviso. En la tabla y en el Excel se veían celdas en blanco y no había forma
+    de saber si faltaba el dato o faltaba el equipo.
+
+    Se distinguen los dos casos, que es la misma distinción que ya hace el MIR y
+    la que cambia lo que hay que hacer al respecto:
+
+    - `SE` (sin equipo) si la estación no reporta ese parámetro **en todo el
+      periodo**: ahí no hay instrumento y no hay nada que arreglar.
+    - `ND` (sin dato) si ese parámetro sí aparece en otras horas: hubo un hueco
+      concreto, y eso sí es un fallo que alguien tiene que mirar.
+
+    Confundirlas hunde el diagnóstico: una estación sin sensor de PM parecería
+    una estación con el sensor de PM averiado todos los días del año.
+    """
+    if df.empty or 'STATION' not in df.columns:
+        return df
+
+    if columnas is None:
+        columnas = [c for c in df.columns if c not in ('STATION', 'DATE', 'HOUR')]
+    columnas = [c for c in columnas if c in df.columns]
+    if not columnas:
+        return df
+
+    df_marcado = df.copy()
+
+    for estacion in df_marcado['STATION'].unique():
+        filas = df_marcado['STATION'] == estacion
+        for columna in columnas:
+            valores = df_marcado.loc[filas, columna]
+            # Vacío es None, NaN o cadena vacía: los tres llegan aquí según de
+            # dónde vengan los datos.
+            vacias = valores.isna() | (valores.astype(str).str.strip() == '')
+            if not vacias.any():
+                continue
+
+            # ¿Queda alguna medición de verdad? Una bandera no cuenta como
+            # medición: si la única "presencia" del canal son banderas, el
+            # equipo no dio un solo dato en el periodo.
+            hay_medicion = valores[~vacias].apply(
+                lambda v: not (isinstance(v, str) and v in BANDERAS)).any()
+
+            _asegurar_columna_de_banderas(df_marcado, columna)
+            df_marcado.loc[filas & vacias, columna] = 'ND' if hay_medicion else 'SE'
+
+    return df_marcado
+
+
 def validar_datos_completo(df, config=None):
     """Ejecutar validaciones según configuración"""
     if config is None:
@@ -877,6 +935,11 @@ def validar_datos_completo(df, config=None):
             'radiacion_umbrales': config.get('radiacion_umbrales'),
         }
         df_validado = validar_series_temporales(df_validado, opciones_series)
+
+    # Al final y no antes: las validaciones anteriores dejan celdas vacías al
+    # descartar valores, y esas también son huecos que hay que marcar.
+    if config.get('marcar_huecos', True):
+        df_validado = marcar_huecos(df_validado)
 
     return df_validado
 
@@ -1046,6 +1109,35 @@ def descargar_app_escritorio(nombre):
     if not os.path.exists(ruta):
         return jsonify({'error': 'La app de escritorio no está compilada en este servidor.'}), 404
     return send_file(ruta, as_attachment=True, download_name=nombre)
+
+
+# ---------------------------------------------------------------------------
+# Registro de errores del servidor
+# ---------------------------------------------------------------------------
+
+@app.route('/api/registros', methods=['GET'])
+def listar_registros():
+    """
+    Los últimos avisos y errores del backend, los más recientes primero.
+
+    Existe para no tener que entrar por SSH a leer logs cada vez que alguien
+    dice «no funciona». Ver registros.py.
+    """
+    limite = max(1, min(int(request.args.get('limite', 100)), registros.CAPACIDAD))
+    nivel = request.args.get('nivel') or None
+    entradas = registros.ultimos(limite, nivel)
+    return jsonify({
+        'registros': entradas,
+        'total': len(entradas),
+        'capacidad': registros.CAPACIDAD,
+    })
+
+
+@app.route('/api/registros', methods=['DELETE'])
+def limpiar_registros():
+    """Vacía la lista. Útil para dejarla limpia antes de reproducir un fallo."""
+    registros.limpiar()
+    return jsonify({'success': True, 'registros': [], 'total': 0})
 
 
 @app.route('/api/health', methods=['GET'])

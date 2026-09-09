@@ -29,10 +29,11 @@ from __future__ import annotations
 import os
 import tempfile
 import threading
-import traceback
 from datetime import datetime, timedelta
 
 import pandas as pd
+
+import registros
 from flask import Blueprint, jsonify, request
 
 from . import almacen, cliente
@@ -136,7 +137,7 @@ def login():
     except ErrorEmisiones as e:
         return jsonify({'error': str(e)}), e.codigo
     except Exception as e:
-        traceback.print_exc()
+        registros.anotar_error('Emisiones: error inesperado al pedir el token', e)
         return jsonify({'error': f'Error inesperado al iniciar sesión: {e}'}), 500
 
     with _candado:
@@ -264,7 +265,7 @@ def descargar():
     except ErrorEmisiones as e:
         return jsonify({'error': str(e)}), e.codigo
     except Exception as e:
-        traceback.print_exc()
+        registros.anotar_error('Emisiones: falló la consulta a la API', e)
         return jsonify({'error': f'Falló la consulta: {e}'}), 502
 
     if df.empty:
@@ -276,7 +277,7 @@ def descargar():
         df_validado = validar_datos_completo(df, config)
         resumen_banderas, _detallado, estadisticas, stats_detalladas = crear_resumen_validacion(df_validado)
     except Exception as e:
-        traceback.print_exc()
+        registros.anotar_error('Emisiones: falló la validación de lo consultado', e)
         return jsonify({'error': f'Error durante la validación: {e}'}), 500
 
     anio = pd.to_datetime(df_validado['DATE'], errors='coerce').dt.year.mode()
