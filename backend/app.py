@@ -6,7 +6,9 @@ No depende de archivos externos.
 """
 
 from flask import Flask, request, jsonify, send_file
+from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
+import math
 from werkzeug.utils import secure_filename
 import os
 import sys
@@ -20,6 +22,45 @@ warnings.filterwarnings('ignore')
 
 app = Flask(__name__)
 CORS(app)
+
+
+def _sanear_json(valor):
+    """
+    Sustituye por `null` los flotantes que JSON no sabe escribir.
+
+    pandas produce NaN a manos llenas —la desviacion estandar de un solo valor,
+    el promedio de una columna entera sin datos— y el modulo json de Python los
+    escribe tal cual, como `NaN`, que no es JSON valido. Python vuelve a
+    leerlos sin rechistar, asi que desde aqui parece que todo va bien; el
+    navegador, en cambio, hace `JSON.parse` y revienta la respuesta ENTERA. Una
+    sola estacion sin PM2.5 bastaba para que una consulta de 30 dias llegara al
+    frontend como "no se pudo consultar la API".
+
+    `null` es lo que corresponde: no es que el dato valga cero, es que no hay
+    dato, que es justo lo que las graficas necesitan distinguir.
+    """
+    if isinstance(valor, float):
+        return valor if math.isfinite(valor) else None
+    if isinstance(valor, np.floating):
+        numero = float(valor)
+        return numero if math.isfinite(numero) else None
+    if isinstance(valor, dict):
+        return {clave: _sanear_json(v) for clave, v in valor.items()}
+    if isinstance(valor, (list, tuple)):
+        return [_sanear_json(v) for v in valor]
+    return valor
+
+
+class ProveedorJSON(DefaultJSONProvider):
+    """El proveedor de siempre, pero saneando antes de serializar."""
+
+    def dumps(self, obj, **kwargs):
+        return super().dumps(_sanear_json(obj), **kwargs)
+
+
+# Se pone en el proveedor y no en cada endpoint porque el problema no es de un
+# endpoint: cualquier respuesta que venga de un DataFrame puede traer NaN.
+app.json = ProveedorJSON(app)
 
 # Los avisos y errores se quedan ademas en memoria para poder verlos desde la
 # interfaz. En un servidor nadie mira la salida estandar. Ver registros.py.

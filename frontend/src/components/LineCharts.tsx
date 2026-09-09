@@ -2,6 +2,9 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 // @ts-ignore — el bundle dist es browser-ready pero no tiene declaraciones de tipo propias
 import Plotly from 'plotly.js/dist/plotly.js';
 import {
+  rejillaHoraria, serieEnRejilla, agregadoZona, type Agregado,
+} from '../graficas/series';
+import {
   CONTAMINANTES as CONTAMINANTES_CONST,
   METEOROLOGICOS as METEOROLOGICOS_CONST,
   COLORES_ESTACIONES,
@@ -31,6 +34,14 @@ const PARAM_COLORS: Record<string, string> = {
   IT: '#ef4444', ET: '#f59e0b', RH: '#3b82f6', WS: '#22c55e',
   WD: '#8b5cf6', PP: '#06b6d4', ATM: '#ec4899', RS: '#f97316', UVI: '#eab308',
 };
+
+// Los agregados de toda la zona no son una estación más, así que no toman
+// color de estación: van en tinta y rojo oscuro para leerse por encima del
+// resto de las líneas.
+const AGREGADOS: { id: Agregado; etiqueta: string; color: string; dash: 'solid' | 'dash' }[] = [
+  { id: 'promedio', etiqueta: 'Promedio AMG', color: '#111827', dash: 'solid' },
+  { id: 'maximo', etiqueta: 'Máximo AMG', color: '#b91c1c', dash: 'dash' },
+];
 
 // Paleta extra para multi-param/multi-station
 function hexToRgba(hex: string, alpha: number) {
@@ -86,11 +97,20 @@ const LineCharts = ({ data }: LineChartsProps) => {
     return index;
   }, [data]);
 
+  // Todas las horas del periodo, hayan medido o no. Las estaciones se dibujan
+  // sobre esta rejilla para que una hora sin dato sea un hueco y no una recta
+  // uniendo la medición anterior con la siguiente. Ver graficas/series.ts.
+  const rejilla = useMemo(() => rejillaHoraria(data), [data]);
+
   // Inicializar con TODAS las estaciones activas desde el primer render
   const [selectedStations, setSelectedStations] = useState<Set<string>>(
     () => new Set(data.map(d => d.STATION))
   );
   const [selectedParams, setSelectedParams] = useState<Set<string>>(new Set(['O3']));
+  // Agregados de toda la zona metropolitana. Van aparte de las estaciones
+  // porque no dependen de cuáles estén marcadas: se calculan siempre con las
+  // 13, que es lo que significa «AMG».
+  const [agregados, setAgregados] = useState<Set<Agregado>>(new Set());
   // Asignación de eje: default = y1, puede moverse a y2 o y3 (para mezclar unidades)
   const [axisAssignments, setAxisAssignments] = useState<Record<string, 'y1' | 'y2' | 'y3'>>({});
   const [showValidationAlerts, setShowValidationAlerts] = useState(true);
@@ -146,6 +166,13 @@ const LineCharts = ({ data }: LineChartsProps) => {
     });
   };
 
+  const toggleAgregado = (id: Agregado) =>
+    setAgregados(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
   const selectAllStations = () => setSelectedStations(new Set(stations));
   const clearAllStations = () => setSelectedStations(new Set());
 
@@ -167,15 +194,14 @@ const LineCharts = ({ data }: LineChartsProps) => {
       const paramColor = getLineColor(param);
       const paramDash = getLineStyle(param);
 
+      // Cada estación sobre la rejilla completa: donde no midió va null, y con
+      // connectgaps en false la línea se parte ahí en vez de cruzar el hueco.
+      const series: Record<string, (number | null)[]> = {};
       stationsToShow.forEach((station) => {
-        const stationData = dataByStation[station] || [];
+        series[station] = serieEnRejilla(dataByStation[station] || [], rejilla, param);
+      });
 
-        const x = stationData.map(getTime);
-        const y = stationData.map(d => getNumeric(d[param]));
-
-        // Las líneas de estación siempre usan el color de la estación
-        const color = getStationColor(station);
-
+      stationsToShow.forEach((station) => {
         result.push({
           type: 'scatter',
           mode: 'lines',
@@ -184,91 +210,86 @@ const LineCharts = ({ data }: LineChartsProps) => {
             : multiStation ? station
             : multiParam ? param
             : `${station} · ${param}`,
-          x,
-          y,
+          x: rejilla,
+          y: series[station],
           connectgaps: false,
           yaxis,
-          line: { color, width: 1.5, dash: paramDash },
+          line: { color: getStationColor(station), width: 1.5, dash: paramDash },
           legendgroup: multiStation ? station : param,
         });
       });
 
-      // Banda promedio ± σ cuando hay múltiples estaciones
+      // Banda promedio ± σ de las estaciones marcadas.
       if (multiStation) {
-        const timeValues: Record<string, number[]> = {};
+        const medias: (number | null)[] = [];
+        const inferior: (number | null)[] = [];
+        const superior: (number | null)[] = [];
 
-        stationsToShow.forEach(station => {
-          (dataByStation[station] || []).forEach(row => {
-            const t = getTime(row);
-            const val = getNumeric(row[param]);
-            if (val !== null) {
-              if (!timeValues[t]) timeValues[t] = [];
-              timeValues[t].push(val);
-            }
-          });
+        rejilla.forEach((_, i) => {
+          const valores = stationsToShow
+            .map((s) => series[s][i])
+            .filter((v): v is number => v !== null);
+          if (valores.length === 0) {
+            medias.push(null); inferior.push(null); superior.push(null);
+            return;
+          }
+          const media = valores.reduce((a, b) => a + b, 0) / valores.length;
+          const desv = valores.length < 2
+            ? 0
+            : Math.sqrt(valores.reduce((acc, v) => acc + (v - media) ** 2, 0) / valores.length);
+          medias.push(media);
+          inferior.push(media - desv);
+          superior.push(media + desv);
         });
 
-        const sortedTimes = Object.keys(timeValues).sort();
-        if (sortedTimes.length === 0) return;
-
-        const means = sortedTimes.map(t => {
-          const vals = timeValues[t];
-          return vals.reduce((a, b) => a + b, 0) / vals.length;
-        });
-        const stds = sortedTimes.map(t => {
-          const vals = timeValues[t];
-          if (vals.length < 2) return 0;
-          const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-          return Math.sqrt(vals.reduce((acc, v) => acc + (v - mean) ** 2, 0) / vals.length);
-        });
-
-        const lower = means.map((m, i) => m - stds[i]);
-        const upper = means.map((m, i) => m + stds[i]);
-
-        // Borde inferior (invisible, base del fill)
+        // Borde inferior (invisible, base del relleno)
         result.push({
-          type: 'scatter',
-          mode: 'lines',
-          x: sortedTimes,
-          y: lower,
-          line: { width: 0 },
-          showlegend: false,
-          hoverinfo: 'skip',
-          connectgaps: false,
-          yaxis,
+          type: 'scatter', mode: 'lines',
+          x: rejilla, y: inferior,
+          line: { width: 0 }, showlegend: false, hoverinfo: 'skip',
+          connectgaps: false, yaxis,
         });
         // Banda superior con relleno
         result.push({
-          type: 'scatter',
-          mode: 'lines',
-          x: sortedTimes,
-          y: upper,
-          fill: 'tonexty',
-          fillcolor: hexToRgba(paramColor, 0.12),
-          line: { width: 0 },
-          name: `±σ ${param}`,
-          hoverinfo: 'skip',
-          connectgaps: false,
-          yaxis,
-          legendgroup: `avg_${param}`,
+          type: 'scatter', mode: 'lines',
+          x: rejilla, y: superior,
+          fill: 'tonexty', fillcolor: hexToRgba(paramColor, 0.12),
+          line: { width: 0 }, name: `±σ ${param}`, hoverinfo: 'skip',
+          connectgaps: false, yaxis, legendgroup: `avg_${param}`,
         });
-        // Línea de promedio — usa color "Mean" estándar de la paleta
+        // Línea de promedio de lo seleccionado. Se dice «sel.» para no
+        // confundirla con el promedio de la AMG, que son las 13 estaciones
+        // estén marcadas o no.
+        result.push({
+          type: 'scatter', mode: 'lines',
+          x: rejilla, y: medias,
+          name: `Promedio sel. ${param}`,
+          line: { color: paramColor, width: 3, dash: 'solid' },
+          connectgaps: false, yaxis, legendgroup: `avg_${param}`,
+        });
+      }
+
+      // Agregados de toda la zona metropolitana, con las 13 estaciones.
+      AGREGADOS.forEach(({ id, etiqueta, color, dash }) => {
+        if (!agregados.has(id)) return;
         result.push({
           type: 'scatter',
           mode: 'lines',
-          x: sortedTimes,
-          y: means,
-          name: `Promedio ${param}`,
-          line: { color: getLineColor(param), width: 3, dash: 'solid' },
+          name: `${etiqueta} · ${param}`,
+          x: rejilla,
+          y: agregadoZona(dataByStation, stations, rejilla, param, id),
           connectgaps: false,
           yaxis,
-          legendgroup: `avg_${param}`,
+          line: { color, width: 2.5, dash },
+          legendgroup: `amg_${id}_${param}`,
+          hovertemplate: `<b>%{x}</b><br>${etiqueta} ${param}=%{y:.4g}<extra></extra>`,
         });
-      }
+      });
     });
 
     return result;
-  }, [dataByStation, selectedStations, selectedParams, axisAssignments, lineColors, lineStyles, stationColorOverrides]);
+  }, [dataByStation, stations, rejilla, selectedStations, selectedParams, agregados,
+      axisAssignments, lineColors, lineStyles, stationColorOverrides]);
 
   // ── Trazos de alerta: PM2.5 > PM10 ──────────────────────────────────────────
   const pm25pm10AlertTraces = useMemo(() => {
@@ -317,11 +338,10 @@ const LineCharts = ({ data }: LineChartsProps) => {
 
     Array.from(selectedParams).forEach(param => {
       Array.from(selectedStations).forEach(station => {
-        const stationData = dataByStation[station] || [];
-
-        const times = stationData.map(getTime);
-        const values = stationData.map(d => getNumeric(d[param]));
-        const runs = detectConstantRuns(values, times, 3);
+        // Sobre la rejilla, para que un hueco corte la corrida: dos tramos
+        // planos separados por horas sin dato no son un valor pegado.
+        const values = serieEnRejilla(dataByStation[station] || [], rejilla, param);
+        const runs = detectConstantRuns(values, rejilla, 3);
 
         runs.forEach(run => {
           shapes.push({
@@ -340,7 +360,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
     });
 
     return shapes;
-  }, [dataByStation, selectedStations, selectedParams, showValidationAlerts]);
+  }, [dataByStation, rejilla, selectedStations, selectedParams, showValidationAlerts]);
 
   const layout = useMemo(() => {
     const y1Params = Array.from(selectedParams).filter(p => getAxis(p) === 'y1');
@@ -469,6 +489,34 @@ const LineCharts = ({ data }: LineChartsProps) => {
                   >{station}</span>
                 </div>
               ))}
+            </div>
+
+            {/* Agregados de la zona: no son estaciones, por eso van aparte y
+                debajo. Se calculan siempre con las 13. */}
+            <div className="mt-2 pt-2 border-t border-gray-100">
+              <div className="flex items-center gap-4">
+                {AGREGADOS.map(({ id, etiqueta, color, dash }) => (
+                  <label key={id} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={agregados.has(id)}
+                      onChange={() => toggleAgregado(id)}
+                      className="accent-blue-600 cursor-pointer"
+                    />
+                    <span
+                      className="inline-block w-5 flex-shrink-0"
+                      style={{
+                        borderTop: `3px ${dash === 'dash' ? 'dashed' : 'solid'} ${color}`,
+                      }}
+                    />
+                    <span className="text-gray-700">{etiqueta}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                Sobre las {stations.length} estaciones y el parámetro seleccionado,
+                hora a hora. Independiente de las casillas de arriba.
+              </p>
             </div>
           </div>
 

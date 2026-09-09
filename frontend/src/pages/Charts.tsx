@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { BarChart3, AlertCircle } from 'lucide-react';
 import LineCharts from '../components/LineCharts';
+import PerfilHorario from '../components/PerfilHorario';
 import StatCharts from '../components/StatCharts';
 import CalendarHeatmaps from '../components/CalendarHeatmaps';
 import { useDatos } from '../estado/DatosContexto';
@@ -89,6 +90,7 @@ const Charts = () => {
           </div>
 
           <LineCharts data={data} />
+          <PerfilHorario data={data} />
           <StatCharts data={data} />
           <CalendarHeatmaps data={data} />
         </>
