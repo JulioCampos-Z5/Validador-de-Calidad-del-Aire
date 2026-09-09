@@ -29,7 +29,7 @@ function Acceso() {
   const { entrarEmisiones } = useDatos();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [recordar, setRecordar] = useState(false);
+  const [recordar, setRecordar] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [fallo, setFallo] = useState<string | null>(null);
 
@@ -80,9 +80,10 @@ function Acceso() {
         disabled={enviando}
         className={campo}
       />
-      {/* Desmarcada por defecto: guardar el token es comodo pero deja una
-          credencial en disco, y esa decision la toma el usuario a sabiendas,
-          no el programa por el. */}
+      {/* Marcada por defecto: el token dura una semana, asi que guardarlo
+          convierte "entrar cada vez" en "entrar una vez al mes largo". Sigue
+          siendo una casilla y no una imposicion, porque deja una credencial en
+          disco y quien use un equipo compartido tiene que poder decir que no. */}
       <label className="flex items-start gap-2 cursor-pointer">
         <input
           type="checkbox"
@@ -94,7 +95,8 @@ function Acceso() {
         <span className="text-[11px] text-slate-600 leading-snug">
           Recordar la sesión en este equipo
           <span className="block text-slate-400">
-            Evita volver a entrar al reiniciar. Guarda el token —no la
+            El token dura una semana: guardándolo no hay que volver a entrar en
+            todo ese tiempo, ni siquiera al reiniciar. Guarda el token —nunca la
             contraseña— en tu perfil de usuario.
           </span>
         </span>

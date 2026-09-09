@@ -63,8 +63,20 @@ def _restaurar() -> None:
     esté caducado o ilegible, así que aquí no hay nada que validar.
     """
     guardada = almacen.cargar()
-    if guardada:
-        _sesion.update(guardada)
+    if not guardada:
+        return
+
+    _sesion.update(guardada)
+
+    # En el servidor nadie ve la interfaz, y saber si el arranque recupero la
+    # sesion —y cuanto le queda— es la diferencia entre enterarse ahora o
+    # cuando alguien avise de que la web pide entrar otra vez.
+    quedan = ''
+    if guardada.get('caduca'):
+        dias = (guardada['caduca'] - datetime.now()).days
+        quedan = f", caduca en {dias} dia{'s' if dias != 1 else ''}"
+    print(f"[emisiones] sesion recuperada de disco: {guardada.get('email')}{quedan}",
+          flush=True)
 
 
 _restaurar()

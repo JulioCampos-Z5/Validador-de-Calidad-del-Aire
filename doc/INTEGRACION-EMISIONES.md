@@ -78,7 +78,13 @@ armar el DataFrame donde ya vive pandas.
 
 ### «Recordar la sesión en este equipo»
 
-Opcional, **desmarcada por defecto**. Al marcarla, el backend guarda el token en
+**Marcada por defecto**, y se puede desmarcar. El token dura una semana, así
+que guardarlo convierte «entrar cada vez» en «entrar una vez a la semana»: al
+arrancar, el backend lo recupera y no vuelve a pedir nada hasta que caduca. Sigue
+siendo una casilla porque deja una credencial en disco y quien use un equipo
+compartido tiene que poder decir que no.
+
+Al marcarla, el backend guarda el token en
 
 ```
 ~/.validador-calidad-aire/sesion-emisiones.json
@@ -88,6 +94,10 @@ y lo recupera al arrancar, así que sobrevive a reiniciar el backend y a cerrar
 la app de escritorio. Como el archivo vive en el perfil del usuario, **una sesión
 guardada desde la web también la ve la app de escritorio**: es la misma cuenta
 del mismo equipo.
+
+En el arranque, si recupera una sesión lo dice por el log —`sesion recuperada de
+disco: …, caduca en N dias`—, que en un servidor es la única forma de enterarse
+sin abrir la interfaz.
 
 Tres decisiones que van juntas:
 
@@ -102,8 +112,14 @@ Tres decisiones que van juntas:
   solo alarga la vida de una credencial que ya no vale.
 
 El token sigue siendo una credencial: quien pueda leer ese archivo puede
-consultar la API en nombre del usuario hasta que caduque. Por eso es una
-decisión explícita y no un valor por defecto.
+consultar la API en nombre del usuario hasta que caduque. Por eso la casilla
+existe, aunque venga marcada.
+
+**En el servidor la sesión es una sola para todos.** Con el contenedor, se entra
+una vez y el token queda en el volumen `validador-sesion`; a partir de ahí nadie
+más tiene que entrar. Eso es cómodo y es lo que se busca, pero conviene saber lo
+que implica: todas las consultas salen con esa cuenta, y quien cierre sesión se
+la cierra a todos.
 
 **Caducidad.** Se lee del propio token: los que devuelve la API son JWT y traen
 su `exp` — el observado dura **una semana**. Si algún día dejara de ser un JWT
