@@ -104,8 +104,11 @@ interface Estado {
   setRevalidar: Dispatch<SetStateAction<boolean>>;
   setError: Dispatch<SetStateAction<string | null>>;
   cargarArchivo: (archivo: File, origen: OrigenArchivo) => Promise<void>;
-  cargarSimaj: () => Promise<void>;
-  cargarEmisiones: () => Promise<void>;
+  // Aceptan el periodo explicito porque quien las llama acaba de elegirlo: si
+  // se dejara leer del estado, la primera descarga tras cambiar las fechas se
+  // haria con las anteriores. Ver la nota en `cargarSimaj`.
+  cargarSimaj: (rango?: Periodo) => Promise<void>;
+  cargarEmisiones: (rango?: Periodo) => Promise<void>;
   entrarEmisiones: (email: string, password: string, recordar?: boolean) => Promise<void>;
   salirEmisiones: () => Promise<void>;
   cambiarContaminantesMir: (c: string[]) => Promise<void>;
@@ -248,7 +251,17 @@ export function DatosProvider({ children }: { children: ReactNode }) {
     }
   }, [configBackend, revalidar]);
 
-  const cargarSimaj = useCallback(async () => {
+  /**
+   * Descarga del SIMAJ.
+   *
+   * El rango llega por parametro y no se lee de `periodo` a proposito. El
+   * asistente hace `setPeriodo(rango)` y acto seguido llama aqui, y en ese
+   * momento el estado todavia es el anterior: React no lo actualiza hasta el
+   * siguiente render. El sintoma era desconcertante —se elegian 7 dias y se
+   * descargaban los 30 de antes, sin un solo error— y encima caro, porque cada
+   * dia de mas son miles de peticiones al SIMAJ.
+   */
+  const cargarSimaj = useCallback(async (rango?: Periodo) => {
     setCargando(true);
     setError(null);
     setExito(null);
@@ -267,7 +280,7 @@ export function DatosProvider({ children }: { children: ReactNode }) {
     }, 1000);
 
     try {
-      const r = await minutalesApi.descargar(rangoConsultable(periodo), contaminantesMir, configBackend());
+      const r = await minutalesApi.descargar(rangoConsultable(rango ?? periodo), contaminantesMir, configBackend());
       setResultado(r);
       setMir(r.mir ?? null);
       setFallas(r.fallas ?? []);
@@ -302,16 +315,17 @@ export function DatosProvider({ children }: { children: ReactNode }) {
     setSesionEmisiones(s);
   }, []);
 
-  const cargarEmisiones = useCallback(async () => {
+  /** Lo mismo que en `cargarSimaj`: el rango elegido manda sobre el estado. */
+  const cargarEmisiones = useCallback(async (rango?: Periodo) => {
     setCargando(true);
     setError(null);
     setExito(null);
     try {
       // El backend de Emisiones espera la hora explícita; el selector da solo
       // el día, y el día empieza a las 00:00.
-      const rango = rangoConsultable(periodo);
+      const consultable = rangoConsultable(rango ?? periodo);
       const r = await emisionesApi.descargar(
-        { desde: `${rango.desde} 00:00`, hasta: `${rango.hasta} 00:00` },
+        { desde: `${consultable.desde} 00:00`, hasta: `${consultable.hasta} 00:00` },
         configBackend(),
       );
       setResultado(r);

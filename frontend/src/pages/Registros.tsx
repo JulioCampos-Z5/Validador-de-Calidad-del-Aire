@@ -3,17 +3,24 @@ import {
   ScrollText, RefreshCw, Trash2, ChevronRight, AlertCircle, AlertTriangle, Check,
 } from 'lucide-react';
 import apiService, { type RegistroServidor } from '../services/api';
+import ReporteFallas from '../components/ReporteFallas';
+import { useDatos } from '../estado/DatosContexto';
 
 /**
- * Errores y avisos del backend.
+ * Lo que falla, en un solo sitio: la red y el servidor.
  *
- * Hasta ahora, cuando algo fallaba en el servidor la traza se iba a la salida
- * estándar y ahí moría: en desarrollo se ve en la terminal, pero en un servidor
- * —y más dentro de un contenedor— no la ve nadie. El usuario decía «no
- * funciona» y había que entrar por SSH para enterarse de qué había pasado.
+ * Son dos cosas distintas y por eso van en secciones separadas, pero la
+ * pregunta que traen a esta pantalla es la misma —«¿qué está fallando?»—, y
+ * tenerlas en pestañas distintas obligaba a recordar cuál mirar.
  *
- * Esta pantalla enseña lo mismo que vería quien leyera el log, sin salir de la
- * aplicación.
+ * La red: qué canales no llegan al umbral de suficiencia. Vivía en el tablero,
+ * entre las gráficas y los resúmenes del periodo, que es donde se mira el dato;
+ * esto es lo contrario, es la lista de lo que hay que ir a arreglar.
+ *
+ * El servidor: cuando algo fallaba, la traza se iba a la salida estándar y ahí
+ * moría. En desarrollo se ve en la terminal, pero en un servidor —y más dentro
+ * de un contenedor— no la ve nadie: el usuario decía «no funciona» y había que
+ * entrar por SSH para enterarse de qué había pasado.
  */
 
 type Nivel = 'todos' | 'ERROR' | 'WARNING';
@@ -91,6 +98,11 @@ function Entrada({ registro }: { registro: RegistroServidor }) {
 }
 
 export default function Registros() {
+  // Las fallas de la red salen del periodo que haya cargado, no de una consulta
+  // propia: solo existen cuando los datos vienen del SIMAJ, porque un archivo
+  // suelto no dice qué horas deberia haber en el periodo.
+  const { fallas, mir, descripcion } = useDatos();
+
   const [registros, setRegistros] = useState<RegistroServidor[]>([]);
   const [nivel, setNivel] = useState<Nivel>('todos');
   const [capacidad, setCapacidad] = useState(0);
@@ -123,12 +135,42 @@ export default function Registros() {
       <div className="flex items-center gap-3">
         <ScrollText className="w-8 h-8 text-primary-600" />
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Registros del servidor</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Registros</h1>
           <p className="text-slate-600">
-            Errores y avisos del backend, los más recientes primero
+            Lo que falla en la red y lo que falla en el servidor
           </p>
         </div>
       </div>
+
+      {/* ── La red ── */}
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-baseline gap-x-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Red de monitoreo
+          </h2>
+          {descripcion && (
+            <span className="text-xs text-slate-400">{descripcion}</span>
+          )}
+        </div>
+
+        {mir ? (
+          <ReporteFallas fallas={fallas} />
+        ) : (
+          <div className="bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center">
+            <p className="text-slate-600">Sin periodo del SIMAJ cargado.</p>
+            <p className="text-sm text-slate-500 mt-1">
+              Descarga uno desde «Consultar datos» para ver qué canales no
+              llegan al umbral. Un archivo suelto no sirve: no dice cuántas
+              horas debería haber en el periodo.
+            </p>
+          </div>
+        )}
+      </section>
+
+      {/* ── El servidor ── */}
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 pt-2">
+        Servidor
+      </h2>
 
       <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200 flex flex-wrap items-center gap-3">
         <div className="flex gap-1">

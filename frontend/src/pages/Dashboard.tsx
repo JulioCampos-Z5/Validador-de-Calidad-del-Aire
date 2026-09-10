@@ -17,7 +17,6 @@ import StatCard from '../components/StatCard';
 import DataTable from '../components/DataTable';
 import apiService, { HealthResponse } from '../services/api';
 import TarjetaMir from '../components/TarjetaMir';
-import ReporteFallas from '../components/ReporteFallas';
 import { useDatos } from '../estado/DatosContexto';
 
 // Rangos por defecto (deben coincidir con el backend)
@@ -52,7 +51,7 @@ export default function Dashboard() {
   // en esta pagina, ir a Graficas y volver los perderia y habria que cargarlos
   // otra vez.
   const {
-    resultado: validationResult, mir, fallas, contaminantesMir,
+    resultado: validationResult, mir, contaminantesMir,
     revalidar: revalidate, setRevalidar: setRevalidate,
     config: validationConfig, setConfig: setValidationConfig,
     cambiarContaminantesMir,
@@ -589,7 +588,6 @@ export default function Dashboard() {
             contaminantes={contaminantesMir}
             onCambiarContaminantes={cambiarContaminantesMir}
           />
-          <ReporteFallas fallas={fallas} />
         </div>
       )}
 

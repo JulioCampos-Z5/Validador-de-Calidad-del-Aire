@@ -75,9 +75,13 @@ export default function ModalDatos({ origen, onCerrar }: Props) {
   };
 
   const confirmar = async () => {
+    // El periodo se pasa a la descarga ademas de guardarse: `setPeriodo` no
+    // surte efecto hasta el siguiente render, y sin esto la consulta salia con
+    // las fechas anteriores.
+    const elegido = rango ?? periodo;
     if (rango) setPeriodo(rango);
-    if (origen === 'simaj') await cargarSimaj();
-    else await cargarEmisiones();
+    if (origen === 'simaj') await cargarSimaj(elegido);
+    else await cargarEmisiones(elegido);
     onCerrar();
   };
 
