@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // @ts-ignore — el bundle dist es browser-ready pero no tiene declaraciones de tipo propias
 import Plotly from 'plotly.js/dist/plotly.js';
-import { Clock } from 'lucide-react';
+import { Clock, Info } from 'lucide-react';
 import {
   rejillaHoraria, serieEnRejilla, agregadoZona,
   promedioPorHoraDelDia, type Registro,
@@ -73,28 +73,45 @@ export default function PerfilHorario({ data }: Props) {
     }
   }, [estaciones, ambito]);
 
-  const perfiles = useMemo(() => {
-    /** La serie horaria del ámbito elegido, sobre la rejilla completa. */
-    const serie = (param: string): (number | null)[] => {
-      if (ambito === AMG_PROMEDIO) {
-        return agregadoZona(porEstacion, estaciones, rejilla, param, 'promedio');
-      }
-      if (ambito === AMG_MAXIMO) {
-        return agregadoZona(porEstacion, estaciones, rejilla, param, 'maximo');
-      }
-      return serieEnRejilla(porEstacion[ambito] || [], rejilla, param);
-    };
+  /** La serie horaria del ámbito elegido, sobre la rejilla completa. */
+  const serie = useCallback((param: string): (number | null)[] => {
+    if (ambito === AMG_PROMEDIO) {
+      return agregadoZona(porEstacion, estaciones, rejilla, param, 'promedio');
+    }
+    if (ambito === AMG_MAXIMO) {
+      return agregadoZona(porEstacion, estaciones, rejilla, param, 'maximo');
+    }
+    return serieEnRejilla(porEstacion[ambito] || [], rejilla, param);
+  }, [ambito, porEstacion, estaciones, rejilla]);
 
-    return {
-      principal: promedioPorHoraDelDia(rejilla, serie(parametro)),
-      secundario: cruce ? promedioPorHoraDelDia(rejilla, serie(cruce)) : null,
-    };
-  }, [rejilla, porEstacion, estaciones, ambito, parametro, cruce]);
+  const perfiles = useMemo(() => ({
+    principal: promedioPorHoraDelDia(rejilla, serie(parametro)),
+    secundario: cruce ? promedioPorHoraDelDia(rejilla, serie(cruce)) : null,
+  }), [rejilla, serie, parametro, cruce]);
 
   const { principal, secundario } = perfiles;
 
+  /**
+   * Qué parámetros mide de verdad el ámbito elegido.
+   *
+   * No todas las estaciones traen todos los equipos: en la red, la radiación
+   * solar la miden cuatro de las trece. Elegir RS en una estación que no la
+   * mide dibujaba una leyenda, un eje derecho y ni una línea — que parece la
+   * gráfica rota, no un dato que no existe. Con esto, el desplegable lo dice
+   * antes de elegir y el aviso lo explica después.
+   */
+  const medidos = useMemo(() => {
+    const conDatos = new Set<string>();
+    for (const p of [...CONTAMINANTES, ...METEOROLOGICOS]) {
+      if (serie(p).some(v => v !== null)) conDatos.add(p);
+    }
+    return conDatos;
+  }, [serie]);
+
   const horas = useMemo(() => Array.from({ length: 24 }, (_, h) => h), []);
   const hayDatos = principal.cuentas.some(c => c > 0);
+  // El cruce solo se dibuja si hay algo que dibujar; si no, sobra hasta el eje.
+  const hayCruce = !!secundario && secundario.cuentas.some(c => c > 0);
 
   const nombreAmbito =
     ambito === AMG_PROMEDIO ? 'promedio AMG'
@@ -129,7 +146,7 @@ export default function PerfilHorario({ data }: Props) {
         + '<br>%{customdata} valores<extra></extra>',
     }];
 
-    if (secundario && cruce) {
+    if (secundario && cruce && hayCruce) {
       trazos.push({
         type: 'scatter',
         mode: 'lines+markers',
@@ -150,7 +167,7 @@ export default function PerfilHorario({ data }: Props) {
     const disposicion: any = {
       autosize: true,
       height: 420,
-      margin: { t: 20, r: cruce ? 70 : 30, b: 60, l: 70 },
+      margin: { t: 20, r: hayCruce ? 70 : 30, b: 60, l: 70 },
       xaxis: {
         title: 'Hora del día',
         dtick: 1,
@@ -168,7 +185,7 @@ export default function PerfilHorario({ data }: Props) {
       paper_bgcolor: '#ffffff',
     };
 
-    if (cruce) {
+    if (hayCruce && cruce) {
       disposicion.yaxis2 = {
         title: `${cruce}${unidad(cruce) ? ` [${unidad(cruce)}]` : ''}`,
         overlaying: 'y',
@@ -182,24 +199,25 @@ export default function PerfilHorario({ data }: Props) {
     Plotly.react(grafica.current, trazos, disposicion, {
       responsive: true, displayModeBar: true,
     });
-  }, [horas, principal, secundario, parametro, cruce, nombreAmbito, colorPrincipal, hayDatos]);
+  }, [horas, principal, secundario, parametro, cruce, hayCruce, nombreAmbito, colorPrincipal, hayDatos]);
 
   const selector = 'border border-gray-300 rounded-md px-2 py-1 text-sm bg-white '
     + 'focus:outline-none focus:ring-1 focus:ring-blue-400';
 
-  /** Las opciones de parámetro, agrupadas como en el resto de la interfaz. */
+  /**
+   * Las opciones de parámetro, agrupadas como en el resto de la interfaz y
+   * marcando las que el ámbito elegido no mide.
+   */
+  const opcion = (p: string) => (
+    <option key={p} value={p}>
+      {p} ({getUnitsAndName(p).unit}){medidos.has(p) ? '' : ' — sin datos'}
+    </option>
+  );
+
   const opcionesParametro = (
     <>
-      <optgroup label="Contaminantes">
-        {CONTAMINANTES.map(p => (
-          <option key={p} value={p}>{p} ({getUnitsAndName(p).unit})</option>
-        ))}
-      </optgroup>
-      <optgroup label="Meteorológicos">
-        {METEOROLOGICOS.map(p => (
-          <option key={p} value={p}>{p} ({getUnitsAndName(p).unit})</option>
-        ))}
-      </optgroup>
+      <optgroup label="Contaminantes">{CONTAMINANTES.map(opcion)}</optgroup>
+      <optgroup label="Meteorológicos">{METEOROLOGICOS.map(opcion)}</optgroup>
     </>
   );
 
@@ -250,7 +268,7 @@ export default function PerfilHorario({ data }: Props) {
           </select>
         </label>
 
-        {cruce && (
+        {cruce && hayCruce && (
           <p className="text-xs text-gray-500 max-w-xs leading-snug">
             {isMeteorologico(cruce)
               ? 'Variable meteorológica en el eje derecho: sirve para ver qué explica la forma de la curva.'
@@ -259,11 +277,35 @@ export default function PerfilHorario({ data }: Props) {
         )}
       </div>
 
+      {/* El aviso va antes de la gráfica y no dentro: quien elige un cruce y no
+          ve la segunda curva necesita saber por qué ANTES de concluir que la
+          pantalla está rota. */}
+      {cruce && !hayCruce && hayDatos && (
+        <p className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <Info size={15} className="shrink-0 mt-0.5" />
+          <span>
+            <strong>{nombreAmbito}</strong> no tiene lecturas de {cruce} en este
+            periodo, así que no hay segunda curva que dibujar. En la red no todas
+            las estaciones llevan todos los equipos —la radiación solar, por
+            ejemplo, la miden cuatro de las trece—: prueba con otra estación, con
+            el promedio AMG, o mira en Registros si el canal figura como «sin
+            equipo».
+          </span>
+        </p>
+      )}
+
       {hayDatos ? (
         <div ref={grafica} style={{ width: '100%', minHeight: '420px' }} />
       ) : (
-        <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
-          No hay valores de {parametro} en {nombreAmbito} para el periodo cargado.
+        <div className="flex flex-col items-center justify-center h-48 text-center px-6">
+          <p className="text-gray-500 text-sm">
+            <strong>{nombreAmbito}</strong> no tiene lecturas de {parametro} en
+            el periodo cargado.
+          </p>
+          <p className="text-gray-400 text-xs mt-1">
+            Los parámetros que sí mide salen sin la marca «sin datos» en el
+            desplegable.
+          </p>
         </div>
       )}
     </div>
