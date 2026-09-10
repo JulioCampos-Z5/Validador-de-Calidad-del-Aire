@@ -47,10 +47,20 @@ const PARAM_COLORS: Record<string, string> = {
 // Paleta fija por estación (fuente única)
 const STATION_COLORS = COLORES_ESTACIONES;
 
+/** `2026-09-10` + `14` -> `10/09/2026 14:00`, la hora local de la medición. */
+function momentoLegible(fila: DataPoint): string {
+  const [anio, mes, dia] = String(fila.DATE).split(' ')[0].split('-');
+  const hora = String(fila.HOUR).padStart(2, '0');
+  return `${dia}/${mes}/${anio} ${hora}:00`;
+}
+
 const StatCharts = ({ data }: StatChartsProps) => {
   const [showBoxPlot, setShowBoxPlot] = useState<boolean>(false); // false = Desviación, true = Violín
   const [selectedParam, setSelectedParam] = useState<string>('O3');
   const [paramType, setParamType] = useState<'contaminantes' | 'meteorologicos'>('contaminantes');
+  // Por omisión solo los extremos: son los que se quieren fechar, y dibujar
+  // todas las horas de trece estaciones tapa la forma del violín.
+  const [todosLosPuntos, setTodosLosPuntos] = useState(false);
   const violinRef = useRef<HTMLDivElement>(null);
 
   // Obtener estaciones únicas
@@ -64,6 +74,9 @@ const StatCharts = ({ data }: StatChartsProps) => {
   // Calcular estadísticas por estación para el parámetro seleccionado
   const statsData = useMemo(() => {
     const stationStats: Record<string, number[]> = {};
+    // Cuándo ocurrió cada extremo. Un máximo sin fecha no se puede investigar:
+    // no se sabe si fue una quema de madrugada o el tráfico de la tarde.
+    const cuando: Record<string, { min: string; max: string; minV: number; maxV: number }> = {};
 
     data.forEach((row) => {
       const station = row.STATION;
@@ -74,6 +87,15 @@ const StatCharts = ({ data }: StatChartsProps) => {
           stationStats[station] = [];
         }
         stationStats[station].push(value);
+
+        const momento = momentoLegible(row);
+        const previo = cuando[station];
+        if (!previo) {
+          cuando[station] = { min: momento, max: momento, minV: value, maxV: value };
+        } else {
+          if (value < previo.minV) { previo.min = momento; previo.minV = value; }
+          if (value > previo.maxV) { previo.max = momento; previo.maxV = value; }
+        }
       }
     });
 
@@ -90,6 +112,8 @@ const StatCharts = ({ data }: StatChartsProps) => {
           mediana: 0,
           q3: 0,
           count: 0,
+          cuandoMin: '',
+          cuandoMax: '',
         };
       }
 
@@ -119,6 +143,8 @@ const StatCharts = ({ data }: StatChartsProps) => {
         mediana: Number(mediana.toFixed(4)),
         q3: Number(q3.toFixed(4)),
         count: n,
+        cuandoMin: cuando[station]?.min ?? '',
+        cuandoMax: cuando[station]?.max ?? '',
         // Para error bars
         errorNeg: Number(desviacion.toFixed(4)),
         errorPos: Number(desviacion.toFixed(4)),
@@ -127,15 +153,25 @@ const StatCharts = ({ data }: StatChartsProps) => {
   }, [data, selectedParam, stations]);
 
   // Datos raw por estación para el gráfico de violín
+  /**
+   * Los valores crudos por estación y, en paralelo, cuándo se midió cada uno.
+   *
+   * El violín resume, y un resumen no dice cuándo pasó nada: se veía un pico de
+   * 142 µg/m³ en Miravalle y no había forma de saber si fue una madrugada de
+   * invierno o una tarde de mayo, que es lo primero que se pregunta quien mira
+   * un valor así. La fecha y la hora viajan pegadas al valor para poder
+   * enseñarlas al pasar el ratón.
+   */
   const rawByStation = useMemo(() => {
-    const result: Record<string, number[]> = {};
+    const result: Record<string, { valores: number[]; momentos: string[] }> = {};
     data.forEach(row => {
-      const station = row.STATION;
       const val = row[selectedParam];
-      if (typeof val === 'number' && !isNaN(val)) {
-        if (!result[station]) result[station] = [];
-        result[station].push(val);
-      }
+      if (typeof val !== 'number' || isNaN(val)) return;
+
+      const station = row.STATION;
+      if (!result[station]) result[station] = { valores: [], momentos: [] };
+      result[station].valores.push(val);
+      result[station].momentos.push(momentoLegible(row));
     });
     return result;
   }, [data, selectedParam]);
@@ -144,7 +180,7 @@ const StatCharts = ({ data }: StatChartsProps) => {
   useEffect(() => {
     if (!showBoxPlot || !violinRef.current) return;
 
-    const filtered = stations.filter(s => (rawByStation[s] || []).length > 1);
+    const filtered = stations.filter(s => (rawByStation[s]?.valores.length ?? 0) > 1);
 
     const violinData = filtered.map(station => {
       const color = STATION_COLORS[station] || '#3b82f6';
@@ -154,10 +190,20 @@ const StatCharts = ({ data }: StatChartsProps) => {
       const b = parseInt(color.slice(5, 7), 16);
       const fillRgba = `rgba(${r},${g},${b},0.35)`;
 
+      const info = getUnitsAndName(selectedParam);
+
       return {
         type: 'violin',
         name: station,
-        y: rawByStation[station],
+        y: rawByStation[station].valores,
+        // Cada punto sabe de qué hora es. Sin esto el violín enseña la forma de
+        // la distribución pero no deja llegar al dato concreto.
+        text: rawByStation[station].momentos,
+        hoveron: 'points+kde',
+        hovertemplate:
+          `<b>${station}</b><br>%{text}<br>`
+          + `${selectedParam} = %{y:.4g}${info.unit ? ` ${info.unit}` : ''}`
+          + '<extra></extra>',
         // Caja interna visible con color contrastante
         box: {
           visible: true,
@@ -167,8 +213,9 @@ const StatCharts = ({ data }: StatChartsProps) => {
         },
         // Línea de la media
         meanline: { visible: true, color: '#1e293b', width: 2 },
-        // Outliers como puntos pequeños
-        points: 'outliers',
+        // Los extremos siempre a la vista; el resto, si se piden. Dibujar
+        // miles de puntos por estación tapa el violín entero.
+        points: todosLosPuntos ? 'all' : 'outliers',
         jitter: 0.3,
         pointpos: 0,
         marker: { color, size: 4, opacity: 0.6, line: { width: 0.5, color: '#fff' } },
@@ -220,7 +267,7 @@ const StatCharts = ({ data }: StatChartsProps) => {
       displayModeBar: true,
       modeBarButtonsToRemove: ['select2d', 'lasso2d'],
     });
-  }, [showBoxPlot, rawByStation, stations, selectedParam]);
+  }, [showBoxPlot, rawByStation, stations, selectedParam, todosLosPuntos]);
 
   return (
     <div className="space-y-6">
@@ -311,12 +358,37 @@ const StatCharts = ({ data }: StatChartsProps) => {
 
       {/* Gráfica */}
       <div className="bg-white p-4 rounded-lg shadow">
-        <h3 className="text-lg font-semibold mb-4 text-blue-700 flex items-center gap-2">
-          <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
-          {showBoxPlot
-            ? `Violín - ${selectedParam} por Estación`
-            : `Desviación Estándar - ${selectedParam} por Estación`}
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h3 className="text-lg font-semibold text-blue-700 flex items-center gap-2">
+            <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
+            {showBoxPlot
+              ? `Violín - ${selectedParam} por Estación`
+              : `Desviación Estándar - ${selectedParam} por Estación`}
+          </h3>
+
+          {showBoxPlot && (
+            <label
+              className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer"
+              title="Cada punto es una hora medida. Pasa el ratón por encima para ver su fecha y su hora."
+            >
+              <input
+                type="checkbox"
+                checked={todosLosPuntos}
+                onChange={e => setTodosLosPuntos(e.target.checked)}
+                className="accent-cyan-600 cursor-pointer"
+              />
+              Ver todas las horas
+            </label>
+          )}
+        </div>
+
+        {showBoxPlot && (
+          <p className="text-xs text-gray-500 mb-3">
+            Cada punto es una hora medida: al pasar el ratón dice su fecha, su
+            hora y su valor. Sin marcar la casilla solo se dibujan los extremos,
+            que son los que suelen querer fecharse.
+          </p>
+        )}
 
         {statsData.length > 0 ? (
           showBoxPlot ? (
@@ -388,7 +460,9 @@ const StatCharts = ({ data }: StatChartsProps) => {
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Estación</th>
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Registros</th>
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Mínimo</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Cuándo</th>
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Máximo</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Cuándo</th>
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Promedio</th>
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Desv. Estándar</th>
                 <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Mediana</th>
@@ -400,7 +474,9 @@ const StatCharts = ({ data }: StatChartsProps) => {
                   <td className="px-4 py-2 font-medium text-gray-800">{stat.station}</td>
                   <td className="px-4 py-2 text-gray-600">{stat.count}</td>
                   <td className="px-4 py-2 text-gray-600">{stat.min}</td>
+                  <td className="px-4 py-2 text-gray-400 text-xs tabular-nums whitespace-nowrap">{stat.cuandoMin}</td>
                   <td className="px-4 py-2 text-gray-600">{stat.max}</td>
+                  <td className="px-4 py-2 text-gray-400 text-xs tabular-nums whitespace-nowrap">{stat.cuandoMax}</td>
                   <td className="px-4 py-2 text-blue-600 font-medium">{stat.promedio}</td>
                   <td className="px-4 py-2 text-orange-600 font-medium">{stat.desviacion}</td>
                   <td className="px-4 py-2 text-gray-600">{stat.mediana}</td>
