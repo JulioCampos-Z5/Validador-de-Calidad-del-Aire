@@ -16,9 +16,11 @@ interface CalendarHeatmapsProps {
 }
 
 type ModoViz = 'hora' | 'mov8h' | 'mov24h' | 'nowcast';
-type VersionUmbrales = 'actual' | '2026';
 
-// Umbrales actuales (Redspira / referencias previas a NOM-172-2026)
+// Umbrales de referencia anteriores a la NOM-172 (los de Redspira). Siguen
+// aquí porque la norma nueva solo cambió las partículas: para O3, NO2, SO2 y
+// CO estos son los únicos que hay.
+
 const UMBRALES: Record<string, number[]> = {
   'PM2.5': [25, 45, 79, 147],
   PM10:   [50, 75, 155, 235],
@@ -28,7 +30,16 @@ const UMBRALES: Record<string, number[]> = {
   CO:     [8.75, 11, 13.3, 15.5],
 };
 
-// Umbrales NOM-172-SEMARNAT-2023 (vigentes a partir de enero 2026) — solo PM
+/**
+ * Umbrales de la NOM-172-SEMARNAT-2023, vigentes desde enero de 2026.
+ *
+ * Se aplican siempre que existen para el parámetro, sin opción de volver a los
+ * anteriores: son los que están en vigor, y dejar elegir invitaba a leer un
+ * mes de 2026 con la vara de 2025 —y a que dos personas mirando la misma
+ * pantalla vieran categorías distintas para el mismo dato.
+ *
+ * Solo cubren partículas; el resto de contaminantes sigue con `UMBRALES`.
+ */
 const UMBRALES_2026: Record<string, number[]> = {
   'PM2.5': [15, 25, 79, 130],
   PM10:   [45, 50, 132, 213],
@@ -201,7 +212,6 @@ export default function CalendarHeatmaps({ data }: CalendarHeatmapsProps) {
   const [estacion, setEstacion] = useState('');
   const [parametro, setParametro] = useState('PM2.5');
   const [modo, setModo] = useState<ModoViz>('hora');
-  const [version, setVersion] = useState<VersionUmbrales>('actual');
 
   useEffect(() => {
     if (estaciones.length > 0 && !estaciones.includes(estacion)) {
@@ -230,10 +240,11 @@ export default function CalendarHeatmaps({ data }: CalendarHeatmapsProps) {
     return result;
   }, [data, estacion, parametro]);
 
-  const umbralesActivos = useMemo(() => {
-    if (version === '2026' && UMBRALES_2026[parametro]) return UMBRALES_2026[parametro];
-    return UMBRALES[parametro];
-  }, [parametro, version]);
+  // La norma manda donde la hay; donde no, los de referencia.
+  const umbralesActivos = useMemo(
+    () => UMBRALES_2026[parametro] ?? UMBRALES[parametro],
+    [parametro],
+  );
 
   // Categorías por mes/día/hora
   const datosPorMes = useMemo(() => {
@@ -272,9 +283,9 @@ export default function CalendarHeatmaps({ data }: CalendarHeatmapsProps) {
 
   const info = getUnitsAndName(parametro);
   const modosDisponibles = MODOS_DISPONIBLES[parametro] ?? null;
-  const mostrarVersion2026 = parametro in UMBRALES_2026;
+  const usaNom172 = parametro in UMBRALES_2026;
   const mostrarDI = modo !== 'hora';
-  const catLabels = (version === '2026' && mostrarVersion2026) ? CATEGORIA_LABELS_2026 : CATEGORIA_LABELS_ACTUAL;
+  const catLabels = usaNom172 ? CATEGORIA_LABELS_2026 : CATEGORIA_LABELS_ACTUAL;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mt-6">
@@ -320,10 +331,9 @@ export default function CalendarHeatmaps({ data }: CalendarHeatmapsProps) {
         </div>
       </div>
 
-      {/* Fila 2: Modo de visualización + Versión de umbrales */}
-      {(modosDisponibles || mostrarVersion2026) && (
+      {/* Fila 2: modo de visualización */}
+      {modosDisponibles && (
         <div className="flex flex-wrap gap-4 mb-4">
-          {modosDisponibles && (
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-gray-700">Visualización:</label>
               <InfoTooltip lines={
@@ -352,34 +362,6 @@ export default function CalendarHeatmaps({ data }: CalendarHeatmapsProps) {
                 ))}
               </div>
             </div>
-          )}
-
-          {mostrarVersion2026 && (
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">Umbrales:</label>
-              <InfoTooltip lines={[
-                '📌 Actuales: umbrales de referencia anteriores a NOM-172-2026 (usados por Redspira).',
-                `   PM2.5: 25 / 45 / 79 / 147 µg/m³`,
-                `   PM10:  50 / 75 / 155 / 235 µg/m³`,
-                '📋 NOM-172 2026: umbrales vigentes desde enero 2026. Categoría "Aceptable" en lugar de "Regular".',
-                `   PM2.5: 15 / 25 / 79 / 130 µg/m³`,
-                `   PM10:  45 / 50 / 132 / 213 µg/m³`,
-              ]} />
-              <div className="flex gap-1">
-                {(['actual', '2026'] as VersionUmbrales[]).map(v => (
-                  <button
-                    key={v}
-                    onClick={() => setVersion(v)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                      version === v ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    {v === 'actual' ? 'Actuales' : 'NOM-172 2026'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -415,8 +397,18 @@ export default function CalendarHeatmaps({ data }: CalendarHeatmapsProps) {
           </div>
         )}
         <span className="text-gray-500 ml-2">
-          ({info.name}, umbrales: {(umbralesActivos || []).join(' / ')} {info.unit})
+          ({info.name}, umbrales: {(umbralesActivos || []).join(' / ')} {info.unit}
+          {usaNom172 ? ' · NOM-172-SEMARNAT-2023' : ''})
         </span>
+        {usaNom172 && (
+          <InfoTooltip lines={[
+            '📋 Umbrales de la NOM-172-SEMARNAT-2023, en vigor desde enero de 2026.',
+            '   PM2.5: 15 / 25 / 79 / 130 µg/m³',
+            '   PM10:  45 / 50 / 132 / 213 µg/m³',
+            'La segunda categoría es «Aceptable», no «Regular».',
+            'Los anteriores (PM2.5 25/45/79/147, PM10 50/75/155/235) ya no se usan.',
+          ]} />
+        )}
       </div>
 
       {/* Heatmaps por mes */}
