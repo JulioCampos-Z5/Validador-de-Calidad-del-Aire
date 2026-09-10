@@ -27,7 +27,7 @@ import logging
 import threading
 import traceback
 from collections import deque
-from datetime import datetime
+import horario
 
 # Cuántos se conservan. Suficiente para reconstruir lo que pasó en una sesión de
 # trabajo sin que la memoria crezca sin control en un servidor de días de vida.
@@ -58,7 +58,10 @@ class _Anillo(logging.Handler):
         try:
             entrada = {
                 'id': 0,
-                'momento': datetime.fromtimestamp(record.created).isoformat(timespec='seconds'),
+                # La hora de Guadalajara, no la del reloj de la maquina: en un
+                # contenedor esto salia seis horas por delante y el error
+                # no cuadraba con lo que la persona estaba haciendo.
+                'momento': horario.de_marca(record.created).isoformat(timespec='seconds'),
                 'nivel': record.levelname,
                 'origen': record.name,
                 'mensaje': record.getMessage(),

@@ -29,6 +29,8 @@ import json
 import os
 from datetime import datetime
 
+import horario
+
 CARPETA_POR_DEFECTO = os.path.join(os.path.expanduser('~'), '.validador-calidad-aire')
 NOMBRE = 'sesion-emisiones.json'
 
@@ -53,7 +55,7 @@ def guardar(token: str, email: str, caduca: datetime | None,
         'token': token,
         'email': email,
         'caduca': caduca.isoformat() if caduca else None,
-        'guardada': datetime.now().isoformat(timespec='seconds'),
+        'guardada': horario.ahora().isoformat(timespec='seconds'),
     }
 
     temporal = destino + '.parcial'
@@ -103,7 +105,7 @@ def cargar(carpeta: str | None = None) -> dict | None:
         except ValueError:
             olvidar(carpeta)
             return None
-        if caduca <= datetime.now():
+        if caduca <= horario.ahora():
             olvidar(carpeta)
             return None
 

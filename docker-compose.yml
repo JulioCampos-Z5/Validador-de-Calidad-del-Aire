@@ -15,6 +15,12 @@ services:
     ports:
       - "8080:8000"
 
+    environment:
+      # La red publica en hora de Guadalajara y el contenedor arranca en UTC.
+      # El backend ya convierte por su cuenta (ver backend/horario.py), pero
+      # esto deja tambien en hora local las trazas del servidor.
+      TZ: America/Mexico_City
+
     volumes:
       # Los ejecutables de Windows se compilan fuera —PyInstaller no compila
       # para otro sistema— y se dejan aquí. Si la carpeta está vacía, la sección

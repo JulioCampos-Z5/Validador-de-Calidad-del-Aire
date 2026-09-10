@@ -41,6 +41,7 @@ from datetime import date, datetime, timedelta
 from functools import lru_cache
 from typing import Any, Iterable
 
+import horario
 import numpy as np
 import pandas as pd
 import requests
@@ -302,7 +303,7 @@ def _caducidad(token: str) -> datetime:
                 return datetime.fromtimestamp(exp)
         except Exception:
             pass  # No es un JWT legible; se usa la vigencia supuesta.
-    return datetime.now() + VIGENCIA_SUPUESTA
+    return horario.ahora() + VIGENCIA_SUPUESTA
 
 
 def solicitar_token(email: str, password: str) -> dict:
@@ -933,7 +934,7 @@ def _guardar_cache(carpeta: str, dia: date, registros: list[dict]) -> None:
     misma razón por la que la caché de los .lsi del SIMAJ funciona: una hora ya
     publicada no se reescribe.
     """
-    if dia >= datetime.now().date():
+    if dia >= horario.hoy():
         return
     os.makedirs(carpeta, exist_ok=True)
     ruta = _ruta_cache(carpeta, dia)

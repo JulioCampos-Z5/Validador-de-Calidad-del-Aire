@@ -36,6 +36,8 @@ from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from typing import Callable, Iterable
 
+import horario
+
 import pandas as pd
 import requests
 
@@ -231,7 +233,7 @@ def descargar(
     lista = list(estaciones_pedidas) if estaciones_pedidas else estaciones(sesion)
 
     if desde is None:
-        desde = datetime.now() - timedelta(days=31 * meses)
+        desde = horario.ahora() - timedelta(days=31 * meses)
     desde = desde.replace(hour=0, minute=0, second=0, microsecond=0)
     # Sin `hasta`, hasta donde llegue lo publicado. El límite es excluyente: un
     # archivo se nombra por la hora en que se publica (`00_10` es la hora 00),

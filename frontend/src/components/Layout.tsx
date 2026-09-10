@@ -4,8 +4,7 @@ import {
   LayoutDashboard,
   Settings,
   Wind,
-  PanelLeft,
-  PanelLeftOpen,
+  Menu,
   BarChart3,
   ScrollText,
 } from 'lucide-react';
@@ -49,7 +48,12 @@ export default function Layout({ children }: LayoutProps) {
               aria-expanded={!plegado}
               className="p-2 rounded-lg hover:bg-slate-100 text-slate-600"
             >
-              {plegado ? <PanelLeftOpen size={24} /> : <PanelLeft size={24} />}
+              {/* La misma hamburguesa en los dos estados: es el gesto que
+                  todo el mundo reconoce para «el menú», y un icono que cambia
+                  de dibujo al pulsarlo hace dudar de si es el mismo botón.
+                  Que esté plegado o no ya se ve en la barra, y lo dice el
+                  title y aria-expanded. */}
+              <Menu size={24} />
             </button>
             <div className="flex items-center gap-2">
               <Wind className="h-8 w-8 text-primary-600" />

@@ -33,6 +33,7 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 
+import horario
 import registros
 import ultimo
 from flask import Blueprint, jsonify, request
@@ -79,7 +80,7 @@ def _restaurar() -> None:
     # cuando alguien avise de que la web pide entrar otra vez.
     quedan = ''
     if guardada.get('caduca'):
-        dias = (guardada['caduca'] - datetime.now()).days
+        dias = (guardada['caduca'] - horario.ahora()).days
         quedan = f", caduca en {dias} dia{'s' if dias != 1 else ''}"
     print(f"[emisiones] sesion recuperada de disco: {guardada.get('email')}{quedan}",
           flush=True)
@@ -105,7 +106,7 @@ DIAS_AVISO = 31
 
 def _hay_sesion() -> bool:
     return bool(_sesion['token']) and (
-        _sesion['caduca'] is None or _sesion['caduca'] > datetime.now()
+        _sesion['caduca'] is None or _sesion['caduca'] > horario.ahora()
     )
 
 
@@ -189,7 +190,7 @@ def _rango_pedido(cuerpo: dict) -> tuple[datetime, datetime]:
             raise ErrorEmisiones('Fechas no reconocidas. Usa AAAA-MM-DD.', codigo=400)
     else:
         dias = int(cuerpo.get('dias', 1))
-        hasta = datetime.now().replace(minute=0, second=0, microsecond=0)
+        hasta = horario.ahora().replace(minute=0, second=0, microsecond=0)
         desde = hasta - timedelta(days=dias)
 
     if hasta <= desde:
@@ -221,7 +222,7 @@ def muestra():
 
     horas = max(1, min(int(request.args.get('horas', 1)), 24))
     limite = max(1, min(int(request.args.get('limite', 3)), 50))
-    hasta = datetime.now().replace(minute=0, second=0, microsecond=0)
+    hasta = horario.ahora().replace(minute=0, second=0, microsecond=0)
     desde = hasta - timedelta(hours=horas)
 
     try:
@@ -294,8 +295,8 @@ def descargar():
         return jsonify({'error': f'Error durante la validación: {e}'}), 500
 
     anio = pd.to_datetime(df_validado['DATE'], errors='coerce').dt.year.mode()
-    anio = int(anio.iloc[0]) if not anio.empty else datetime.now().year
-    marca = datetime.now().strftime('%Y%m%d_%H%M%S')
+    anio = int(anio.iloc[0]) if not anio.empty else horario.ahora().year
+    marca = horario.ahora().strftime('%Y%m%d_%H%M%S')
     salida = f'BD_{anio}_{marca}.xlsx'
     ruta_salida = os.path.join(flask_app.config['UPLOAD_FOLDER'], salida)
     exportar_resultados(df_validado, ruta_salida)

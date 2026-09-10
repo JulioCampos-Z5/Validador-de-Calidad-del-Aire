@@ -35,9 +35,17 @@ FROM python:3.12-slim
 # la API pero devuelve 404 en `/` y la página sale en blanco.
 WORKDIR /app
 
+# La imagen slim no trae la base de datos de zonas horarias, y sin ella
+# `zoneinfo` no encuentra America/Mexico_City: el backend arrancaría y
+# reventaría en la primera fecha. `tzdata` de pip la trae sin pasar por apt.
 COPY backend/requirements.txt ./backend/
 RUN pip install --no-cache-dir -r backend/requirements.txt \
-    && pip install --no-cache-dir 'gunicorn==23.0.0'
+    && pip install --no-cache-dir 'gunicorn==23.0.0' 'tzdata==2025.2'
+
+# El programa fecha en hora de Guadalajara por su cuenta (ver backend/horario.py);
+# esto alinea además lo que no pasa por ahí: las trazas de gunicorn y cualquier
+# herramienta que se ejecute dentro del contenedor.
+ENV TZ=America/Mexico_City
 
 COPY backend/ ./backend/
 COPY --from=frontend /frontend/dist ./frontend/dist

@@ -14,6 +14,7 @@ import os
 import sys
 import tempfile
 from datetime import datetime
+import horario
 import pandas as pd
 import numpy as np
 import warnings
@@ -1187,7 +1188,7 @@ def health_check():
     return jsonify({
         'status': 'ok',
         'message': 'API de Validación de Calidad del Aire funcionando',
-        'timestamp': datetime.now().isoformat(),
+        'timestamp': horario.ahora().isoformat(),
         'version': '2.0.0'
     })
 
@@ -1236,7 +1237,7 @@ def upload_file():
     
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp = horario.ahora().strftime('%Y%m%d_%H%M%S')
         filename = f"{timestamp}_{filename}"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
@@ -1301,8 +1302,8 @@ def validate_full():
             anio = pd.to_datetime(df_validado['DATE'], errors='coerce').dt.year.mode().iloc[0]
             anio = int(anio)
         except Exception:
-            anio = datetime.now().year
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            anio = horario.ahora().year
+        timestamp = horario.ahora().strftime('%Y%m%d_%H%M%S')
         output_filename = f"BD_{anio}_{timestamp}.xlsx"
         output_filepath = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
         exportar_resultados(df_validado, output_filepath)

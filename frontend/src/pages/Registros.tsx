@@ -41,11 +41,21 @@ function estiloDe(nivel: string) {
   };
 }
 
-/** `2026-09-09T11:43:07` -> `09/09 11:43:07`, que es lo que se mira al comparar. */
+/**
+ * `2026-09-09T11:43:07` -> `09/09 11:43:07`, que es lo que se mira al comparar.
+ *
+ * El servidor ya fecha en hora de Guadalajara (ver backend/horario.py) y manda
+ * la fecha sin zona, así que aquí se fija la misma: sin eso, el navegador la
+ * interpretaría con el reloj de quien mira, y alguien conectándose desde otro
+ * huso vería el error a una hora que no es la que ocurrió.
+ */
+const ZONA = 'America/Mexico_City';
+
 function momento(iso: string): string {
   const f = new Date(iso);
   if (Number.isNaN(f.getTime())) return iso;
-  return f.toLocaleString([], {
+  return f.toLocaleString('es-MX', {
+    timeZone: ZONA,
     day: '2-digit', month: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });

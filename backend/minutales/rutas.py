@@ -17,6 +17,7 @@ from datetime import datetime
 
 import pandas as pd
 
+import horario
 import registros
 import ultimo
 from flask import Blueprint, jsonify, request, send_file
@@ -139,8 +140,8 @@ def descargar():
     # Mismo Excel y mismo nombre que produce el flujo de archivo, para que el
     # botón de descarga del tablero funcione igual venga de donde venga el dato.
     anio = pd.to_datetime(df_validado['DATE'], errors='coerce').dt.year.mode()
-    anio = int(anio.iloc[0]) if not anio.empty else datetime.now().year
-    marca = datetime.now().strftime('%Y%m%d_%H%M%S')
+    anio = int(anio.iloc[0]) if not anio.empty else horario.ahora().year
+    marca = horario.ahora().strftime('%Y%m%d_%H%M%S')
     salida = f'BD_{anio}_{marca}.xlsx'
     ruta_salida = os.path.join(flask_app.config['UPLOAD_FOLDER'], salida)
     exportar_resultados(df_validado, ruta_salida)
