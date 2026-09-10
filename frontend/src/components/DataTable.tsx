@@ -271,7 +271,11 @@ export default function DataTable({ data, columns, maxRows = 50, showAll = false
       )}
 
       {/* Tabla con scroll horizontal */}
-      <div className="overflow-x-auto border border-slate-200 rounded-lg">
+      {/* Quince filas de alto —medidas: 37 px cada una más la cabecera—, que
+          es bastante para ver un patrón sin que la tabla empuje media página
+          hacia abajo. La cabecera se queda pegada arriba (`sticky` en los th)
+          para no perder de vista qué columna se está mirando al desplazarse. */}
+      <div className="overflow-auto border border-slate-200 rounded-lg max-h-[37.5rem]">
         <table className="min-w-full divide-y divide-slate-200">
           <thead>
             <tr>

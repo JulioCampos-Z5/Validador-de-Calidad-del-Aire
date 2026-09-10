@@ -664,9 +664,12 @@ export default function Dashboard() {
                   Estadísticas por estación y parámetro
                 </p>
               </div>
-              <div className="overflow-x-auto">
+              {/* Igual que la vista previa: unas quince filas y a desplazar.
+                  Trece estaciones por diecisiete parámetros son 221 filas, y
+                  enteras dejaban el resto del tablero fuera de alcance. */}
+              <div className="overflow-auto max-h-[39rem]">
                 <table className="w-full text-sm">
-                  <thead className="bg-slate-100">
+                  <thead className="bg-slate-100 sticky top-0 z-10">
                     <tr>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">Estación</th>
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">Parámetro</th>
