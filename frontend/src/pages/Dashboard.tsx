@@ -16,7 +16,6 @@ import {
 import StatCard from '../components/StatCard';
 import DataTable from '../components/DataTable';
 import apiService, { HealthResponse } from '../services/api';
-import TarjetaMir from '../components/TarjetaMir';
 import { useDatos } from '../estado/DatosContexto';
 
 // Rangos por defecto (deben coincidir con el backend)
@@ -51,10 +50,9 @@ export default function Dashboard() {
   // en esta pagina, ir a Graficas y volver los perderia y habria que cargarlos
   // otra vez.
   const {
-    resultado: validationResult, mir, contaminantesMir,
+    resultado: validationResult,
     revalidar: revalidate, setRevalidar: setRevalidate,
     config: validationConfig, setConfig: setValidationConfig,
-    cambiarContaminantesMir,
   } = useDatos();
 
   const [editingSection, setEditingSection] = useState<'rangos' | 'temperatura' | 'series' | null>(null);
@@ -581,16 +579,6 @@ export default function Dashboard() {
       </div>
 
       {/* ─── RESULTADOS ─── */}
-      {mir && (
-        <div className="space-y-5 mb-6">
-          <TarjetaMir
-            mir={mir}
-            contaminantes={contaminantesMir}
-            onCambiarContaminantes={cambiarContaminantesMir}
-          />
-        </div>
-      )}
-
       {validationResult && (
         <div className="space-y-6">
           <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">

@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import apiService, { type RegistroServidor } from '../services/api';
 import ReporteFallas from '../components/ReporteFallas';
+import TarjetaMir from '../components/TarjetaMir';
 import { useDatos } from '../estado/DatosContexto';
 
 /**
@@ -13,9 +14,11 @@ import { useDatos } from '../estado/DatosContexto';
  * pregunta que traen a esta pantalla es la misma —«¿qué está fallando?»—, y
  * tenerlas en pestañas distintas obligaba a recordar cuál mirar.
  *
- * La red: qué canales no llegan al umbral de suficiencia. Vivía en el tablero,
- * entre las gráficas y los resúmenes del periodo, que es donde se mira el dato;
- * esto es lo contrario, es la lista de lo que hay que ir a arreglar.
+ * La red: el indicador MIR y, debajo, qué canales no llegan al umbral. Van
+ * juntos porque el indicador plantea la pregunta —esta estación se queda en
+ * 64— y la lista la contesta: cuál de sus canales la hunde. Vivían en el
+ * tablero, entre las gráficas y los resúmenes del periodo, que es donde se mira
+ * el dato; esto es lo contrario, es la lista de lo que hay que ir a arreglar.
  *
  * El servidor: cuando algo fallaba, la traza se iba a la salida estándar y ahí
  * moría. En desarrollo se ve en la terminal, pero en un servidor —y más dentro
@@ -101,7 +104,7 @@ export default function Registros() {
   // Las fallas de la red salen del periodo que haya cargado, no de una consulta
   // propia: solo existen cuando los datos vienen del SIMAJ, porque un archivo
   // suelto no dice qué horas deberia haber en el periodo.
-  const { fallas, mir, descripcion } = useDatos();
+  const { fallas, mir, descripcion, contaminantesMir, cambiarContaminantesMir } = useDatos();
 
   const [registros, setRegistros] = useState<RegistroServidor[]>([]);
   const [nivel, setNivel] = useState<Nivel>('todos');
@@ -154,7 +157,14 @@ export default function Registros() {
         </div>
 
         {mir ? (
-          <ReporteFallas fallas={fallas} />
+          <>
+            <TarjetaMir
+              mir={mir}
+              contaminantes={contaminantesMir}
+              onCambiarContaminantes={cambiarContaminantesMir}
+            />
+            <ReporteFallas fallas={fallas} />
+          </>
         ) : (
           <div className="bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center">
             <p className="text-slate-600">Sin periodo del SIMAJ cargado.</p>
