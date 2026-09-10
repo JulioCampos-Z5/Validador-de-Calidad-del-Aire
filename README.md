@@ -166,7 +166,9 @@ auditoría están los logs del contenedor, que siguen recibiéndolo todo.
 
 ## Indicador MIR
 
-Solo cuando los datos vienen del SIMAJ. Mide **cuánto dato hay**, no cuánta
+Cuando los datos vienen de una consulta por periodo —el SIMAJ o la API de
+Emisiones—; un archivo suelto no dice qué tramo pretende cubrir, y sin eso no
+hay cobertura que medir. Mide **cuánto dato hay**, no cuánta
 contaminación: el porcentaje de horas válidas de cada contaminante criterio,
 promediado por estación y comparado contra el 75% que exige el punto 10.4.2 de
 la NOM-156.

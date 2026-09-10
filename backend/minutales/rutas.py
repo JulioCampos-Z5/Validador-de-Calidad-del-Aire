@@ -18,6 +18,7 @@ from datetime import datetime
 import pandas as pd
 
 import registros
+import ultimo
 from flask import Blueprint, jsonify, request, send_file
 
 from . import cliente
@@ -29,9 +30,8 @@ bp = Blueprint('minutales', __name__, url_prefix='/api/minutales')
 # publicada no se reescribe, así que la segunda corrida solo baja lo nuevo.
 CACHE = os.path.join(tempfile.gettempdir(), 'minutales_cache')
 
-# Último periodo descargado, para que MIR y el reporte no obliguen a repetir la
-# descarga cada vez que se cambian los contaminantes elegidos.
-_ultimo: dict = {'df': None, 'meses': None}
+# El periodo descargado se guarda en `ultimo`, que es de todo el backend: la
+# API de Emisiones consulta lo mismo y su MIR se calcula igual. Ver ultimo.py.
 _candado = threading.Lock()
 
 # Progreso de la descarga en curso. La descarga de tres meses de trece
@@ -127,8 +127,7 @@ def descargar():
     # una estación con un sensor descalibrado se vería igual que una que no
     # reporta, y son dos problemas distintos que se atienden distinto.
     mir = calcular_mir(df, contaminantes)
-    _ultimo['df'] = df
-    _ultimo['meses'] = meses
+    ultimo.guardar(df, 'simaj')
 
     try:
         df_validado = validar_datos_completo(df, config)
@@ -179,14 +178,14 @@ def descargar():
 @bp.route('/mir', methods=['POST'])
 def recalcular_mir():
     """Recalcula el MIR cambiando los contaminantes elegidos, sin volver a bajar."""
-    if _ultimo['df'] is None:
-        return jsonify({'error': 'Todavía no se ha descargado ningún periodo.'}), 409
+    if ultimo.datos() is None:
+        return jsonify({'error': 'Todavía no se ha consultado ningún periodo.'}), 409
 
     cuerpo = request.get_json(silent=True) or {}
     contaminantes = cuerpo.get('contaminantes') or CONTAMINANTES_CRITERIO
     umbral = float(cuerpo.get('umbral', 75))
 
-    mir = calcular_mir(_ultimo['df'], contaminantes, umbral)
+    mir = calcular_mir(ultimo.datos(), contaminantes, umbral)
     return jsonify({'mir': mir, 'fallas': diagnostico_fallas(mir)})
 
 
@@ -246,7 +245,7 @@ def _mir_pedido():
     """El MIR del último periodo, con los contaminantes que pida la petición."""
     contaminantes = request.args.get('contaminantes')
     elegidos = contaminantes.split(',') if contaminantes else CONTAMINANTES_CRITERIO
-    return calcular_mir(_ultimo['df'], elegidos)
+    return calcular_mir(ultimo.datos(), elegidos)
 
 
 @bp.route('/reporte.xlsx', methods=['GET'])
@@ -258,8 +257,8 @@ def reporte_xlsx():
     el diagnóstico de fallas —lo único que dice qué hay que ir a arreglar— se
     quedaba en la pantalla.
     """
-    if _ultimo['df'] is None:
-        return jsonify({'error': 'Todavía no se ha descargado ningún periodo.'}), 409
+    if ultimo.datos() is None:
+        return jsonify({'error': 'Todavía no se ha consultado ningún periodo.'}), 409
 
     mir = _mir_pedido()
     fallas = diagnostico_fallas(mir)
@@ -287,8 +286,8 @@ def reporte_csv():
     Se mantiene porque es lo que se pega tal cual en la hoja del área técnica;
     para el reporte con las fallas está `/reporte.xlsx`.
     """
-    if _ultimo['df'] is None:
-        return jsonify({'error': 'Todavía no se ha descargado ningún periodo.'}), 409
+    if ultimo.datos() is None:
+        return jsonify({'error': 'Todavía no se ha consultado ningún periodo.'}), 409
 
     ruta = os.path.join(tempfile.gettempdir(), 'reporte_mir.csv')
     _tabla_mir(_mir_pedido()).to_csv(ruta, index=False, encoding='utf-8-sig')

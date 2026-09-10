@@ -112,8 +112,10 @@ export default function OrigenDatos() {
         </a>
       )}
 
-      {/* El reporte MIR solo existe si los datos vienen del SIMAJ: un archivo no
-          dice qué horas debería haber en el periodo. */}
+      {/* El reporte MIR existe cuando los datos vienen de una consulta por
+          periodo —SIMAJ o API de Emisiones—: un archivo suelto no dice qué
+          horas debería haber en el tramo, y sin eso no hay cobertura que
+          medir. */}
       {mir && (
         <a
           href={minutalesApi.urlReporteMir(contaminantesMir)}

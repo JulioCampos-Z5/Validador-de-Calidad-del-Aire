@@ -294,13 +294,23 @@ siguiente candidato a mejorar, generándolo bajo demanda.
 
 ---
 
-## Por qué aquí no hay MIR
+## El MIR también sale de aquí
 
-El indicador necesita saber qué horas **debería** haber en el periodo, y eso
-solo lo sabe el flujo del SIMAJ, que recorre el calendario estación por
-estación. Una consulta a la API trae las filas que hay, no las que faltan —
-igual que un archivo—, así que se comporta como el flujo de archivo: tablero,
-gráficas y Excel sí; MIR y reporte de fallas no.
+Durante un tiempo no salía, con este razonamiento: el indicador necesita saber
+qué horas **debería** haber en el periodo, y eso una consulta a la API no lo
+dice —trae las filas que hay, no las que faltan—, igual que un archivo.
+
+El razonamiento estaba mal en su mitad importante. Lo que fija las horas
+esperadas es el **rango pedido**, y aquí se pide igual de explícito que en el
+SIMAJ: del 4 al 10 son 168 horas por estación, existan las filas o no. Lo que
+de verdad no da para MIR es un archivo suelto, porque nadie dice qué tramo
+pretende cubrir.
+
+Así que una consulta a la API devuelve `mir` y `fallas` como la del SIMAJ,
+calculados con el mismo `minutales/mir.py` y sobre los datos crudos, antes de
+validar. Las filas quedan en `ultimo.py` —un almacén común a los dos orígenes—
+para que el reporte y el recálculo al cambiar contaminantes funcionen venga el
+periodo de donde venga.
 
 ---
 

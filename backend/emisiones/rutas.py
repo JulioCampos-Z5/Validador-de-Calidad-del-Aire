@@ -34,7 +34,12 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 import registros
+import ultimo
 from flask import Blueprint, jsonify, request
+
+# El indicador es el mismo mire donde mire: lo que cambia es de dónde salieron
+# las filas. Ver minutales/mir.py.
+from minutales.mir import CONTAMINANTES_CRITERIO, calcular_mir, diagnostico_fallas
 
 from . import almacen, cliente
 from .cliente import ErrorEmisiones, SesionCaducada
@@ -249,6 +254,7 @@ def descargar():
 
     cuerpo = request.get_json(silent=True) or {}
     config = cuerpo.get('config') or None
+    contaminantes = cuerpo.get('contaminantes') or CONTAMINANTES_CRITERIO
 
     try:
         desde, hasta = _rango_pedido(cuerpo)
@@ -272,6 +278,13 @@ def descargar():
         return jsonify({
             'error': 'La API no devolvió datos para ese periodo.'
         }), 404
+
+    # El MIR se calcula sobre los datos crudos, ANTES de validar, igual que con
+    # el SIMAJ: mide cuánto publicó la red, no cuánto sobrevivió a las reglas.
+    # Si se calculara después, una estación con un sensor descalibrado se vería
+    # igual que una que no reporta, y son dos problemas distintos.
+    mir = calcular_mir(df, contaminantes)
+    ultimo.guardar(df, 'emisiones')
 
     try:
         df_validado = validar_datos_completo(df, config)
@@ -313,4 +326,6 @@ def descargar():
         'data_preview': df_validado.fillna('').to_dict(orient='records'),
         'estadisticas_detalladas': (stats_detalladas.to_dict(orient='records')
                                     if not stats_detalladas.empty else []),
+        'mir': mir,
+        'fallas': diagnostico_fallas(mir),
     })

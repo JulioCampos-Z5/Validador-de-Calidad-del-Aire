@@ -329,10 +329,12 @@ export function DatosProvider({ children }: { children: ReactNode }) {
         configBackend(),
       );
       setResultado(r);
-      // Igual que con un archivo: la consulta trae las filas que hay, no las
-      // que deberia haber, asi que no da para calcular el MIR.
-      setMir(null);
-      setFallas([]);
+      // El MIR sale tambien de aqui: lo que hace falta para calcularlo es el
+      // periodo pedido —las horas que deberia haber—, y eso lo sabemos igual
+      // que con el SIMAJ. Lo que no da para MIR es un archivo suelto, que no
+      // dice que tramo pretende cubrir.
+      setMir(r.mir ?? null);
+      setFallas(r.fallas ?? []);
       setOrigen('emisiones');
       setDescripcion(`Emisiones Jalisco - ${r.summary.fecha_inicio} a ${r.summary.fecha_fin}`);
       setExito(

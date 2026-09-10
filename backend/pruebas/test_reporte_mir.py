@@ -17,6 +17,7 @@ import unittest
 import pandas as pd
 
 import app
+import ultimo
 from minutales import rutas
 from minutales.mir import calcular_mir, diagnostico_fallas
 
@@ -76,11 +77,10 @@ class TablaDeFallas(unittest.TestCase):
 class ReporteExportado(unittest.TestCase):
     def setUp(self):
         self.cliente = app.app.test_client()
-        self.anterior = rutas._ultimo['df']
-        rutas._ultimo['df'] = _red({'O3': 100, 'NO2': 40, 'SO2': None})
+        ultimo.guardar(_red({'O3': 100, 'NO2': 40, 'SO2': None}), 'simaj')
 
     def tearDown(self):
-        rutas._ultimo['df'] = self.anterior
+        ultimo.olvidar()
 
     def test_el_excel_trae_las_dos_hojas(self):
         respuesta = self.cliente.get(
@@ -95,7 +95,7 @@ class ReporteExportado(unittest.TestCase):
         self.assertEqual(len(hojas['Fallas']), 2)
 
     def test_sin_periodo_descargado_lo_dice_y_no_revienta(self):
-        rutas._ultimo['df'] = None
+        ultimo.olvidar()
         respuesta = self.cliente.get('/api/minutales/reporte.xlsx')
         self.assertEqual(respuesta.status_code, 409)
         self.assertIn('error', respuesta.get_json())

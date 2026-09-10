@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 import app as aplicacion
+import ultimo
 from emisiones import almacen, cliente, rutas
 
 
@@ -189,6 +190,83 @@ class ValidacionDelRango(BaseRutas):
     def test_fechas_ilegibles(self):
         r = self.pedir('el martes', 'el jueves')
         self.assertEqual(r.status_code, 400)
+
+
+class IndicadorDeLoConsultado(BaseRutas):
+    """
+    Una consulta a la API tiene MIR, igual que una descarga del SIMAJ.
+
+    Antes se devolvia sin el, y no porque no se pudiera calcular: lo que hace
+    falta es saber que horas DEBERIA haber en el periodo, y eso lo dice el
+    rango pedido tanto aqui como en el SIMAJ. El resultado era que consultando
+    por la API el tablero se quedaba sin indicador y sin la lista de canales
+    que fallan, que es justo lo que se mira despues de una consulta.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.entrar()
+        self.descargar_original = cliente.descargar
+        cliente.descargar = lambda *a, **k: self._datos()
+        ultimo.olvidar()
+
+    def tearDown(self):
+        cliente.descargar = self.descargar_original
+        ultimo.olvidar()
+        super().tearDown()
+
+    def _datos(self):
+        """Dos dias de una estacion: el O3 completo, el NO2 a medias, sin SO2."""
+        filas = []
+        for dia in (1, 2):
+            for hora in range(24):
+                filas.append({
+                    'STATION': 'AGU',
+                    'DATE': f'2026-09-0{dia}',
+                    'HOUR': hora,
+                    'O3': 0.02,
+                    'NO2': 0.01 if hora < 12 else None,
+                    'SO2': None,
+                })
+        return pd.DataFrame(filas)
+
+    def pedir(self):
+        return self.cliente.post('/api/emisiones/descargar',
+                                 json={'desde': '2026-09-01', 'hasta': '2026-09-03'})
+
+    def test_la_respuesta_trae_mir_y_fallas(self):
+        cuerpo = self.pedir().get_json()
+
+        self.assertIsNotNone(cuerpo.get('mir'))
+        estacion = cuerpo['mir']['estaciones'][0]
+        self.assertEqual(estacion['estacion'], 'AGU')
+        self.assertEqual(estacion['coberturas']['O3'], 100)
+        self.assertEqual(estacion['coberturas']['NO2'], 50)
+        # Sin equipo no es 0%: se excluye del promedio.
+        self.assertIsNone(estacion['coberturas']['SO2'])
+        self.assertIn('SO2', estacion['sin_equipo'])
+
+        tipos = {f['contaminante']: f['tipo'] for f in cuerpo['fallas']}
+        self.assertEqual(tipos['NO2'], 'intermitente')
+        self.assertEqual(tipos['SO2'], 'sin_equipo')
+        self.assertNotIn('O3', tipos)
+
+    def test_el_periodo_queda_disponible_para_el_reporte(self):
+        """
+        Sin esto el boton de exportar aparecia y devolvia un 409: el almacen
+        era de minutales y una consulta a la API no dejaba nada en el.
+        """
+        self.pedir()
+        self.assertEqual(ultimo.origen(), 'emisiones')
+
+        r = self.cliente.get('/api/minutales/reporte.xlsx?contaminantes=O3,NO2,SO2')
+        self.assertEqual(r.status_code, 200)
+
+    def test_se_puede_recalcular_cambiando_los_contaminantes(self):
+        self.pedir()
+        r = self.cliente.post('/api/minutales/mir', json={'contaminantes': ['O3']})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json()['mir']['estaciones'][0]['total'], 100)
 
 
 if __name__ == '__main__':

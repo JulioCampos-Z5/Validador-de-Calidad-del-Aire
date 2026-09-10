@@ -102,8 +102,9 @@ function Entrada({ registro }: { registro: RegistroServidor }) {
 
 export default function Registros() {
   // Las fallas de la red salen del periodo que haya cargado, no de una consulta
-  // propia: solo existen cuando los datos vienen del SIMAJ, porque un archivo
-  // suelto no dice qué horas deberia haber en el periodo.
+  // propia. Existen cuando los datos vienen de una consulta por periodo —el
+  // SIMAJ o la API de Emisiones—; un archivo suelto no dice qué horas debería
+  // haber en el tramo, y sin eso no hay cobertura que medir.
   const { fallas, mir, descripcion, contaminantesMir, cambiarContaminantesMir } = useDatos();
 
   const [registros, setRegistros] = useState<RegistroServidor[]>([]);
@@ -167,11 +168,11 @@ export default function Registros() {
           </>
         ) : (
           <div className="bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center">
-            <p className="text-slate-600">Sin periodo del SIMAJ cargado.</p>
+            <p className="text-slate-600">Sin periodo consultado.</p>
             <p className="text-sm text-slate-500 mt-1">
-              Descarga uno desde «Consultar datos» para ver qué canales no
-              llegan al umbral. Un archivo suelto no sirve: no dice cuántas
-              horas debería haber en el periodo.
+              Consulta uno desde «Consultar datos» —del SIMAJ o de la API de
+              Emisiones— para ver qué canales no llegan al umbral. Un archivo
+              suelto no sirve: no dice cuántas horas debería haber en el tramo.
             </p>
           </div>
         )}

@@ -20,8 +20,8 @@ interface LayoutProps {
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/charts', label: 'Gráficas', icon: BarChart3 },
-  { path: '/config', label: 'Parámetros', icon: Settings },
   { path: '/registros', label: 'Registros', icon: ScrollText },
+  { path: '/config', label: 'Parámetros', icon: Settings },
 ];
 
 export default function Layout({ children }: LayoutProps) {
