@@ -61,6 +61,11 @@ const ATAJOS: { etiqueta: string; dias: number }[] = [
   { etiqueta: '7 días', dias: 7 },
   { etiqueta: '30 días', dias: 30 },
   { etiqueta: '90 días', dias: 90 },
+  // Un año son 8.760 horas por estación: la API de Emisiones lo admite justo
+  // (su tope son 366 días) y el SIMAJ tarda lo suyo. Dos años se ofrecen para
+  // el histórico, y quien lo pida ya verá el aviso de que va a tardar.
+  { etiqueta: '1 año', dias: 365 },
+  { etiqueta: '2 años', dias: 730 },
 ];
 
 interface PropsPanel {
@@ -83,6 +88,15 @@ export function PanelCalendario({ desde, hasta, onRango }: PropsPanel) {
   const [fin, setFin] = useState<Date | null>(aFecha(hasta));
   const [mes, setMes] = useState(() => aFecha(desde));
   const [encima, setEncima] = useState<Date | null>(null);
+  /**
+   * Cuál de los dos extremos se está poniendo.
+   *
+   * Antes lo decidía el estado del rango —si había fin, el siguiente clic
+   * empezaba de cero—, y para corregir solo el día final había que volver a
+   * marcar los dos. Ahora se dice cuál se toca, se toca, y el turno pasa al
+   * otro; también se puede pulsar la casilla de arriba para volver a uno.
+   */
+  const [activo, setActivo] = useState<'inicio' | 'fin'>('inicio');
 
   const hoy = useMemo(() => new Date(), []);
 
@@ -97,30 +111,58 @@ export function PanelCalendario({ desde, hasta, onRango }: PropsPanel) {
     ini.setDate(ini.getDate() - (dias - 1));
     setInicio(ini);
     setFin(fin);
+    setActivo('inicio');
     setMes(new Date(ini.getFullYear(), ini.getMonth(), 1));
   };
 
+  /** Una fecha escrita en las casillas de arriba. */
+  const escribir = (extremo: 'inicio' | 'fin', texto: string) => {
+    if (!texto) return;
+    const dia = aFecha(texto);
+    if (Number.isNaN(dia.getTime()) || dia > hoy) return;
+
+    if (extremo === 'inicio') {
+      setInicio(dia);
+      // Un inicio posterior al fin dejaría un rango imposible; se borra el fin
+      // en vez de reordenarlos por cuenta propia.
+      if (fin && dia > fin) setFin(null);
+      setActivo('fin');
+    } else {
+      if (inicio && dia < inicio) return;
+      setFin(dia);
+      setActivo('inicio');
+    }
+    setMes(new Date(dia.getFullYear(), dia.getMonth(), 1));
+  };
+
   /**
-   * Primer clic: fija el inicio y deja el fin abierto. Segundo clic: cierra el
-   * rango. Si cae antes del inicio no se rechaza —eso obligaría a adivinar el
+   * Pone el extremo que toque y pasa el turno al otro.
+   *
+   * Si el día cae antes del inicio no se rechaza —eso obligaría a adivinar el
    * orden—, se toma como nuevo inicio.
    */
   const elegir = (dia: Date) => {
     if (dia > hoy) return;
-    if (!inicio || fin) {
+
+    if (activo === 'inicio') {
       setInicio(dia);
-      setFin(null);
+      if (fin && dia > fin) setFin(null);
+      setActivo('fin');
       return;
     }
-    if (dia < inicio) {
+
+    if (inicio && dia < inicio) {
       setInicio(dia);
       return;
     }
     setFin(dia);
+    setActivo('inicio');
   };
 
   // Mientras falta el segundo clic, el rango se previsualiza con el ratón.
-  const finVisible = fin ?? (inicio && encima && encima >= inicio ? encima : null);
+  const finVisible = activo === 'fin' && inicio && encima && encima >= inicio
+    ? encima
+    : fin;
 
   const dentro = (dia: Date) =>
     inicio && finVisible && dia > inicio && dia < finVisible;
@@ -138,25 +180,61 @@ export function PanelCalendario({ desde, hasta, onRango }: PropsPanel) {
   return (
     <>
         <div className="px-4 py-3">
-          <div className="flex gap-1 mb-3">
+          <div className="flex flex-wrap gap-1 mb-3">
             {ATAJOS.map(({ etiqueta, dias: d }) => (
               <button
                 key={d}
                 type="button"
                 onClick={() => atajo(d)}
-                className="flex-1 px-2 py-1.5 rounded-md text-xs font-medium border border-slate-300 text-slate-600 bg-white hover:bg-slate-100 transition-colors"
+                className="flex-1 min-w-[3.5rem] px-2 py-1.5 rounded-md text-xs font-medium border border-slate-300 text-slate-600 bg-white hover:bg-slate-100 transition-colors"
               >
                 {etiqueta}
               </button>
             ))}
           </div>
 
+          {/* Las dos fechas, cada una en lo suyo: se escriben aquí o se pulsan
+              en el calendario. La casilla resaltada es la que se está poniendo,
+              y pulsarla devuelve el turno a ese extremo — así se corrige solo
+              el fin sin tener que volver a marcar los dos. */}
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            {([
+              { extremo: 'inicio' as const, etiqueta: 'Desde', valor: inicio },
+              { extremo: 'fin' as const, etiqueta: 'Hasta', valor: fin },
+            ]).map(({ extremo, etiqueta, valor }) => (
+              <label
+                key={extremo}
+                className={`block rounded-md border px-2 py-1.5 cursor-pointer transition-colors ${
+                  activo === extremo
+                    ? 'border-primary-500 bg-primary-50'
+                    : 'border-slate-300 bg-white hover:bg-slate-50'
+                }`}
+                onClick={() => setActivo(extremo)}
+              >
+                <span className={`block text-[11px] font-medium ${
+                  activo === extremo ? 'text-primary-700' : 'text-slate-500'
+                }`}>
+                  {etiqueta}
+                </span>
+                <input
+                  type="date"
+                  value={valor ? aTexto(valor) : ''}
+                  max={aTexto(hoy)}
+                  min={extremo === 'fin' && inicio ? aTexto(inicio) : undefined}
+                  onFocus={() => setActivo(extremo)}
+                  onChange={(e) => escribir(extremo, e.target.value)}
+                  className="w-full bg-transparent text-sm text-slate-800 tabular-nums focus:outline-none"
+                />
+              </label>
+            ))}
+          </div>
+
           {/* Qué falta por pulsar, dicho en una línea. Sin esto, el segundo clic
               es adivinar si el calendario está esperando algo. */}
           <p className="text-xs text-slate-500 mb-3">
-            {!inicio || fin
-              ? 'Pulsa la fecha de inicio.'
-              : 'Ahora pulsa la fecha de fin.'}
+            {activo === 'inicio'
+              ? 'Pulsa la fecha de inicio, o escríbela arriba.'
+              : 'Ahora la fecha de fin.'}
           </p>
 
           <div className="flex items-center justify-between mb-2">
