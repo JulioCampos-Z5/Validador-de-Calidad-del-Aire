@@ -26,6 +26,8 @@ python -m unittest pruebas.test_validaciones
 | `test_rutas_emisiones.py` | Los endpoints: quién guarda la sesión, quién la borra y qué se le cuenta al frontend |
 | `test_almacen.py` | La sesión guardada en disco: se descarta cuando está caducada, ilegible o a medias |
 | `test_minutales.py` | El parseo de los `.lsi` del SIMAJ y el indicador MIR |
+| `test_carga_envista.py` | La entrada de datos: los dos layouts de ENVISTA, la fecha día-mes-año, el decimal con coma, las banderas, la conversión al formato BD y la exportación a Excel |
+| `test_endpoints_validacion.py` | El contrato de la API: subida, validación completa de punta a punta, descarga, vista previa de un archivo ya validado y la entrega de la app de escritorio |
 
 ---
 
@@ -61,4 +63,5 @@ publicación no es una serie plana. Esas son las que se rompen al refactorizar.
   servidor siga respondiendo así. Si la API cambia de formato, el parseo falla
   con un mensaje que lista los campos recibidos, y `GET /api/emisiones/muestra`
   enseña la respuesta cruda.
-- **La exportación a Excel.** Se ejecuta en el flujo real, no en pruebas.
+- **El formato de la hoja de Excel.** Se comprueba que estén las seis hojas y
+  que los decimales sean los del script, no cómo se ve el archivo abierto.
