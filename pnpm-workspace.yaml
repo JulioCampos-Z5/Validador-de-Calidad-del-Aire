@@ -1,0 +1,14 @@
+packages:
+  - frontend
+  - escritorio
+
+# Electron y electron-builder descargan sus binarios en el postinstall;
+# esbuild enlaza el binario nativo que usa Vite al compilar el frontend.
+# es5-ext solo imprime un mensaje de patrocinio: no hace falta ejecutarlo.
+allowBuilds:
+  electron: true
+  electron-builder: true
+  esbuild: true
+  app-builder-bin: true
+  7zip-bin: true
+  es5-ext: false

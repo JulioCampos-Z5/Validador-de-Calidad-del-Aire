@@ -1,0 +1,14 @@
+{
+  "name": "validador-calidad-aire",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.4.0",
+  "description": "Validador de Calidad del Aire (frontend React + app de escritorio Electron)",
+  "scripts": {
+    "dev": "pnpm --filter validador-calidad-aire-frontend dev",
+    "build": "pnpm --filter validador-calidad-aire-frontend build",
+    "lint": "pnpm --filter validador-calidad-aire-frontend lint",
+    "app:dev": "pnpm --filter validador-escritorio dev",
+    "app:exe": "pnpm --filter validador-escritorio exe"
+  }
+}

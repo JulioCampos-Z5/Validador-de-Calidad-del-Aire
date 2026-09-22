@@ -6,9 +6,9 @@
   "description": "App de escritorio del Validador de Calidad del Aire",
   "main": "main.mjs",
   "scripts": {
-    "dev": "npm --prefix ../frontend run build && electron .",
+    "dev": "pnpm --filter validador-calidad-aire-frontend build && electron .",
     "backend": "python -m PyInstaller --distpath ../backend/dist --workpath ../backend/build --noconfirm ../backend/validador-backend.spec",
-    "exe": "npm --prefix ../frontend run build && npm run backend && electron-builder --win"
+    "exe": "pnpm --filter validador-calidad-aire-frontend build && pnpm backend && electron-builder --win"
   },
   "devDependencies": {
     "electron": "^33.4.11",
@@ -17,20 +17,51 @@
   "build": {
     "appId": "gob.jalisco.simaj.validador",
     "productName": "Validador Calidad del Aire",
-    "directories": { "output": "../salida" },
-    "files": ["main.mjs", "package.json", "icono.png"],
+    "directories": {
+      "output": "../salida"
+    },
+    "files": [
+      "main.mjs",
+      "package.json",
+      "icono.png"
+    ],
     "extraResources": [
-      { "from": "../backend/dist/validador-backend", "to": "backend-exe" },
-      { "from": "../frontend/dist", "to": "frontend/dist" }
+      {
+        "from": "../backend/dist/validador-backend",
+        "to": "backend-exe"
+      },
+      {
+        "from": "../frontend/dist",
+        "to": "frontend/dist"
+      }
     ],
     "win": {
       "icon": "icono.png",
+      "signtoolOptions": {
+        "publisherName": "Laboratorio de Calidad del Aire - SIMAJ",
+        "signingHashAlgorithms": [
+          "sha256"
+        ],
+        "rfc3161TimeStampServer": "http://timestamp.digicert.com"
+      },
       "target": [
-        { "target": "portable", "arch": ["x64"] },
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
-    "portable": { "artifactName": "Validador-portable.exe" },
+    "portable": {
+      "artifactName": "Validador-portable.exe"
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
