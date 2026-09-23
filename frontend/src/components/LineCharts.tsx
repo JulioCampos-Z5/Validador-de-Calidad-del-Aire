@@ -84,6 +84,22 @@ function estiloEje(titulo: string, color: string) {
   };
 }
 
+// Combinaciones que se revisan a menudo juntas. Cada una dice en qué eje va
+// cada parámetro: lo que comparte unidad y magnitud va en el mismo eje, y lo
+// que no, aparte, para que ninguna curva quede aplastada contra el cero (el CO
+// ronda 1 ppm y el O3 0.03 ppm: misma unidad, escalas incompatibles).
+const ATAJOS: { nombre: string; ejes: Record<string, Eje> }[] = [
+  { nombre: 'O3 / ET', ejes: { O3: 'y1', ET: 'y2' } },
+  { nombre: 'O3 / NO2 / CO', ejes: { O3: 'y1', NO2: 'y1', CO: 'y2' } },
+  { nombre: 'O3 / RS / UVI', ejes: { O3: 'y1', RS: 'y2', UVI: 'y3' } },
+  { nombre: 'PM10 / PM2.5', ejes: { PM10: 'y1', 'PM2.5': 'y1' } },
+  { nombre: 'PM10 / PM2.5 / CO', ejes: { PM10: 'y1', 'PM2.5': 'y1', CO: 'y2' } },
+  { nombre: 'PM10 / PM2.5 / WS', ejes: { PM10: 'y1', 'PM2.5': 'y1', WS: 'y2' } },
+  { nombre: 'PM10 / PM2.5 / PP', ejes: { PM10: 'y1', 'PM2.5': 'y1', PP: 'y2' } },
+  { nombre: 'PM10 / PM2.5 / RH', ejes: { PM10: 'y1', 'PM2.5': 'y1', RH: 'y2' } },
+  { nombre: 'PM / WS / RH', ejes: { PM10: 'y1', 'PM2.5': 'y1', WS: 'y2', RH: 'y3' } },
+];
+
 function getNumeric(val: any): number | null {
   if (typeof val === 'number' && !isNaN(val)) return val;
   return null;
@@ -154,9 +170,26 @@ const LineCharts = ({ data }: LineChartsProps) => {
   // Color personalizado por estación
   const [stationColorOverrides, setStationColorOverrides] = useState<Record<string, string>>({});
 
+  // Pestaña activa del panel de filtros. Pensado para crecer: cada pestaña
+  // nueva es otra forma de elegir qué se grafica.
+  const [pestanaFiltros, setPestanaFiltros] = useState<'parametros' | 'atajos'>('parametros');
+
   useEffect(() => {
     setSelectedStations(new Set(stations));
   }, [stations]);
+
+  // Un atajo reemplaza la selección y los ejes; colores y trazos elegidos a
+  // mano se conservan.
+  const aplicarAtajo = (ejes: Record<string, Eje>) => {
+    setSelectedParams(new Set(Object.keys(ejes)));
+    setAxisAssignments({ ...ejes });
+  };
+
+  const atajoActivo = (ejes: Record<string, Eje>) => {
+    const params = Object.keys(ejes);
+    return params.length === selectedParams.size
+      && params.every(p => selectedParams.has(p) && (axisAssignments[p] || 'y1') === ejes[p]);
+  };
 
   const getAxis = (p: string): 'y1' | 'y2' | 'y3' => axisAssignments[p] || 'y1';
   const setAxis = (p: string, axis: 'y1' | 'y2' | 'y3') =>
@@ -554,8 +587,27 @@ const LineCharts = ({ data }: LineChartsProps) => {
 
           {/* Selector de parámetros (contaminantes y meteorológicos combinables) */}
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="text-sm font-semibold text-gray-700">Parámetros</h4>
+            <div className="flex items-center justify-between mb-2 border-b border-gray-200">
+              <div className="flex gap-1" role="tablist">
+                {([
+                  { id: 'parametros' as const, etiqueta: 'Parámetros' },
+                  { id: 'atajos' as const, etiqueta: 'Atajos' },
+                ]).map(({ id, etiqueta }) => (
+                  <button
+                    key={id}
+                    role="tab"
+                    aria-selected={pestanaFiltros === id}
+                    onClick={() => setPestanaFiltros(id)}
+                    className={`px-3 py-1.5 text-sm font-semibold -mb-px border-b-2 transition-colors ${
+                      pestanaFiltros === id
+                        ? 'border-blue-600 text-blue-700'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {etiqueta}
+                  </button>
+                ))}
+              </div>
               <button
                 onClick={() => { setLineStyles({}); setLineColors({}); setAxisAssignments({}); setStationColorOverrides({}); }}
                 className="text-xs text-red-500 hover:text-red-700 hover:underline transition-colors"
@@ -564,6 +616,45 @@ const LineCharts = ({ data }: LineChartsProps) => {
                 Restablecer
               </button>
             </div>
+            {pestanaFiltros === 'atajos' && (
+              <div>
+                <p className="text-xs text-gray-400 mb-2">
+                  Combinaciones frecuentes, ya repartidas en ejes. Reemplazan la selección actual;
+                  después puedes ajustarla en <strong>Parámetros</strong>.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {ATAJOS.map(({ nombre, ejes }) => {
+                    const activo = atajoActivo(ejes);
+                    return (
+                      <button
+                        key={nombre}
+                        onClick={() => aplicarAtajo(ejes)}
+                        className={`text-left px-3 py-2 rounded-md border text-sm transition-colors ${
+                          activo
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span className="font-semibold text-gray-800">{nombre}</span>
+                        <span className="flex flex-wrap gap-1 mt-1">
+                          {Object.entries(ejes).map(([param, eje]) => (
+                            <span
+                              key={param}
+                              className="text-[11px] px-1.5 py-0.5 rounded text-white"
+                              style={{ backgroundColor: COLORES_EJE[eje] }}
+                              title={`${param} en ${eje.toUpperCase()}`}
+                            >
+                              {param} · {eje.toUpperCase()}
+                            </span>
+                          ))}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {pestanaFiltros === 'parametros' && (<>
             <p className="text-xs text-gray-400 mb-2">
               Mezcla libremente contaminantes y variables meteorológicas. <strong>Y1/Y2</strong> = eje izquierdo/derecho.
               Cada parámetro nuevo va al eje de los de su tipo; si no hay ninguno, a Y2.
@@ -658,6 +749,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
                 </div>
               ))}
             </div>
+            </>)}
           </div>
         </div>
 
