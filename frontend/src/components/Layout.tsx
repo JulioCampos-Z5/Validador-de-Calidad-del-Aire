@@ -11,6 +11,7 @@ import {
 import OrigenDatos from './OrigenDatos';
 import { MenuContexto, clasesIcono, type EstadoMenu } from './menu';
 import DescargarApp from './DescargarApp';
+import AvisoDescarga from './AvisoDescarga';
 
 interface LayoutProps {
   children: ReactNode;
@@ -134,6 +135,7 @@ export default function Layout({ children }: LayoutProps) {
       {/* Main Content */}
       <main className={`${plegado ? 'ml-16' : 'ml-64'} pt-16 min-h-screen transition-[margin] duration-200`}>
         <div className="p-6">
+          <AvisoDescarga />
           {children}
         </div>
       </main>

@@ -60,7 +60,7 @@ const ORIGENES: {
 
 export default function OrigenDatos() {
   const {
-    cargando, descripcion, error, limpiar, resultado, mir, contaminantesMir,
+    cargando, descripcion, error, limpiar, resultado, mir, contaminantesMir, comoCeroMir,
     progresoSimaj,
   } = useDatos();
   const { plegado, desplegar } = useMenu();
@@ -118,7 +118,7 @@ export default function OrigenDatos() {
           medir. */}
       {mir && (
         <a
-          href={minutalesApi.urlReporteMir(contaminantesMir)}
+          href={minutalesApi.urlReporteMir(contaminantesMir, comoCeroMir)}
           title="Exportar reporte MIR. Excel con la cobertura por estación y los canales que fallan."
           aria-label="Exportar reporte MIR"
           className={plegado

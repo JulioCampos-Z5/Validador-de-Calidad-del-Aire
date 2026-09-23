@@ -23,6 +23,13 @@ resultado:
    como cero daría 72 y la estación pasaría de cumplir a no cumplir.
 
 Solo aplica a los seis contaminantes criterio. La meteorología no entra.
+
+Los datos solos no distinguen «no hay equipo» de «hay equipo pero no dio ni
+un dato»: los dos llegan como cero lecturas. Esa diferencia la sabe el usuario,
+y la marca con `como_cero`: las celdas donde el equipo SÍ está instalado pero
+no reportó o no funciona. Esas entran al promedio con 0, dejan de contarse como
+sin equipo, pasan al diagnóstico como equipo caído y quedan listadas en
+`como_cero` de su estación, para que la pantalla y el reporte lo digan.
 """
 
 from __future__ import annotations
@@ -59,13 +66,17 @@ def calcular_mir(
     df: pd.DataFrame,
     contaminantes: list[str] | None = None,
     umbral: float = UMBRAL_CUMPLE,
+    como_cero: set[tuple[str, str]] | None = None,
 ) -> dict:
     """
     Calcula el MIR por estación y el resumen del periodo.
 
     `contaminantes` permite elegir cuáles entran en el promedio; por omisión los
-    seis criterio. Devuelve un diccionario listo para serializar a JSON.
+    seis criterio. `como_cero` son pares (estación, contaminante) sin lecturas
+    donde sí hay equipo: se cuentan como 0 en vez de excluirse. Devuelve un diccionario listo
+    para serializar a JSON.
     """
+    como_cero = como_cero or set()
     elegidos = [c for c in (contaminantes or CONTAMINANTES_CRITERIO) if c in df.columns]
     if not elegidos or df.empty:
         return {
@@ -95,13 +106,23 @@ def calcular_mir(
             else:
                 coberturas[c] = round(min(100.0, 100.0 * validos / esperadas), 1)
 
+        sin_lecturas = [c for c, v in coberturas.items() if v is None]
+        # Solo se puede marcar lo que de verdad no tiene lecturas: un canal con
+        # datos se queda con su cobertura aunque llegue en la lista.
+        forzados = [c for c in sin_lecturas if (estacion, c) in como_cero and esperadas > 0]
+        for c in forzados:
+            coberturas[c] = 0.0
+        # Lo marcado tiene equipo: ya no es «sin equipo».
+        sin_equipo = [c for c in sin_lecturas if c not in forzados]
+
         medidos = [v for v in coberturas.values() if v is not None]
         total = round(sum(medidos) / len(medidos)) if medidos else None
 
         filas.append({
             'estacion': estacion,
             'coberturas': coberturas,
-            'sin_equipo': [c for c, v in coberturas.items() if v is None],
+            'sin_equipo': sin_equipo,
+            'como_cero': forzados,
             'horas_esperadas': esperadas,
             'total': total,
             'cumple': (total is not None and total >= umbral),
@@ -116,6 +137,28 @@ def calcular_mir(
         'estaciones_que_cumplen': sum(1 for f in filas if f['cumple']),
         'total_estaciones': len(filas),
     }
+
+
+def leer_como_cero(valor) -> set[tuple[str, str]]:
+    """
+    Las celdas a contar como 0, tal como llegan de la petición.
+
+    Acepta una lista `["ATM:PM10", ...]` (cuerpo JSON) o un texto separado por
+    comas (parámetro de la URL). Lo que no tenga la forma estación:contaminante
+    se ignora en silencio: viene del cliente y no debe tumbar el cálculo.
+    """
+    if isinstance(valor, str):
+        valor = valor.split(',')
+    if not isinstance(valor, list):
+        return set()
+    pares = set()
+    for item in valor:
+        if not isinstance(item, str) or item.count(':') != 1:
+            continue
+        estacion, contaminante = (x.strip() for x in item.split(':'))
+        if estacion and contaminante in CONTAMINANTES_CRITERIO:
+            pares.add((estacion, contaminante))
+    return pares
 
 
 def diagnostico_fallas(mir: dict) -> list[dict]:
@@ -134,7 +177,11 @@ def diagnostico_fallas(mir: dict) -> list[dict]:
     hallazgos = []
     for fila in mir['estaciones']:
         for contaminante, cobertura in fila['coberturas'].items():
-            if cobertura is None:
+            if contaminante in fila.get('como_cero', []):
+                # El usuario sabe que ahí hay equipo: sin una sola lectura, es
+                # un equipo caído, no una estación que no lo tiene.
+                tipo, detalle = 'caido', 'Hay equipo, pero no dio datos en el periodo'
+            elif cobertura is None:
                 tipo, detalle = 'sin_equipo', 'Sin lecturas en todo el periodo'
             elif cobertura < 25:
                 tipo, detalle = 'caido', f'Solo {cobertura}% de las horas'

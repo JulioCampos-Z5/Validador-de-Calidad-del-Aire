@@ -12,7 +12,7 @@ from datetime import datetime
 import pandas as pd
 
 from minutales import cliente
-from minutales.mir import calcular_mir, diagnostico_fallas
+from minutales.mir import calcular_mir, diagnostico_fallas, leer_como_cero
 
 
 class ParseoLsi(unittest.TestCase):
@@ -151,6 +151,68 @@ class IndicadorMir(unittest.TestCase):
         self.assertEqual(tipos.get('SO2'), 'sin_equipo')
         self.assertEqual(tipos.get('NO2'), 'caido')
         self.assertNotIn('O3', tipos)
+
+
+class SinEquipoContadoComoCero(unittest.TestCase):
+    """
+    El usuario marca como 0 un hueco donde sí hay equipo pero no dio datos o
+    no funciona: entra al promedio y se diagnostica como equipo caído.
+    """
+
+    SANTA_ANITA = {'O3': 100, 'NO2': 100, 'SO2': None, 'CO': 33, 'PM10': 99, 'PM2.5': 100}
+
+    def _red(self, coberturas):
+        return IndicadorMir._red(None, coberturas)
+
+    def test_contado_como_cero_baja_el_total(self):
+        # El mismo caso de la hoja: 86 excluyendo el hueco, 72 contándolo.
+        mir = calcular_mir(self._red(self.SANTA_ANITA), como_cero={('SAN', 'SO2')})
+        estacion = mir['estaciones'][0]
+        self.assertEqual(estacion['coberturas']['SO2'], 0.0)
+        self.assertEqual(estacion['como_cero'], ['SO2'])
+        self.assertNotIn('SO2', estacion['sin_equipo'], 'si hay equipo, no es sin equipo')
+        self.assertEqual(estacion['total'], 72)
+        self.assertFalse(estacion['cumple'])
+        self.assertEqual(mir['estaciones_que_cumplen'], 0)
+
+    def test_por_omision_no_cambia_nada(self):
+        estacion = calcular_mir(self._red(self.SANTA_ANITA))['estaciones'][0]
+        self.assertEqual(estacion['total'], 86)
+        self.assertEqual(estacion['como_cero'], [])
+        self.assertIsNone(estacion['coberturas']['SO2'])
+
+    def test_un_canal_con_datos_no_se_puede_forzar(self):
+        mir = calcular_mir(self._red(self.SANTA_ANITA), como_cero={('SAN', 'O3')})
+        estacion = mir['estaciones'][0]
+        self.assertEqual(estacion['coberturas']['O3'], 100.0)
+        self.assertEqual(estacion['como_cero'], [])
+        self.assertEqual(estacion['total'], 86)
+
+    def test_solo_afecta_a_su_estacion(self):
+        df = pd.concat([
+            self._red(self.SANTA_ANITA),
+            self._red(self.SANTA_ANITA).assign(STATION='AGU'),
+        ])
+        mir = calcular_mir(df, como_cero={('SAN', 'SO2')})
+        totales = {e['estacion']: e['total'] for e in mir['estaciones']}
+        self.assertEqual(totales, {'AGU': 86, 'SAN': 72})
+
+    def test_el_diagnostico_lo_llama_equipo_caido(self):
+        mir = calcular_mir(self._red(self.SANTA_ANITA), como_cero={('SAN', 'SO2')})
+        so2 = [f for f in diagnostico_fallas(mir) if f['contaminante'] == 'SO2'][0]
+        self.assertEqual(so2['tipo'], 'caido')
+        self.assertIn('Hay equipo', so2['detalle'])
+        self.assertTrue(so2['hunde_a_la_estacion'])
+
+    def test_lectura_de_la_peticion(self):
+        self.assertEqual(leer_como_cero(['SAN:SO2', 'ATM:PM10']),
+                         {('SAN', 'SO2'), ('ATM', 'PM10')})
+        self.assertEqual(leer_como_cero('SAN:SO2,ATM:PM10'),
+                         {('SAN', 'SO2'), ('ATM', 'PM10')})
+        # Lo que llega mal formado se ignora sin romper el cálculo.
+        self.assertEqual(leer_como_cero(['SAN', 'SAN:XX', ':SO2', 3, 'a:b:c']), set())
+        self.assertEqual(leer_como_cero(None), set())
+        self.assertEqual(leer_como_cero({'SAN': 'SO2'}), set())
 
 
 if __name__ == '__main__':

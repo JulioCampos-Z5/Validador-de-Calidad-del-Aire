@@ -16,6 +16,8 @@ export interface EstacionMir {
   estacion: string;
   coberturas: Coberturas;
   sin_equipo: string[];
+  /** Hay equipo pero no dio datos (lo marca el usuario): cuentan como 0. */
+  como_cero: string[];
   horas_esperadas: number;
   /** null cuando la estación no tiene ni un contaminante medido. */
   total: number | null;
@@ -82,13 +84,19 @@ export const minutalesApi = {
     (await api.post('/descargar', { ...periodo, contaminantes, config })).data,
 
   /** Recalcula el MIR con otra selección sin volver a descargar. */
+  // `comoCero` son celdas «ESTACIÓN:CONTAMINANTE» donde el usuario sabe que hay
+  // equipo pero no dio datos: cuentan como 0 en vez de excluirse.
   recalcularMir: async (
     contaminantes: string[],
+    comoCero: string[] = [],
     umbral = 75,
   ): Promise<{ mir: Mir; fallas: Falla[] }> =>
-    (await api.post<{ mir: Mir; fallas: Falla[] }>('/mir', { contaminantes, umbral })).data,
+    (await api.post<{ mir: Mir; fallas: Falla[] }>('/mir', {
+      contaminantes, umbral, como_cero: comoCero,
+    })).data,
 
   /** El reporte completo: la tabla del MIR y las fallas, en dos hojas. */
-  urlReporteMir: (contaminantes: string[]): string =>
-    `/api/minutales/reporte.xlsx?contaminantes=${encodeURIComponent(contaminantes.join(','))}`,
+  urlReporteMir: (contaminantes: string[], comoCero: string[] = []): string =>
+    `/api/minutales/reporte.xlsx?contaminantes=${encodeURIComponent(contaminantes.join(','))}`
+    + (comoCero.length ? `&como_cero=${encodeURIComponent(comoCero.join(','))}` : ''),
 };

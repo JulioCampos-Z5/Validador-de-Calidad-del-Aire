@@ -115,7 +115,7 @@ export default function Registros() {
   // propia. Existen cuando los datos vienen de una consulta por periodo —el
   // SIMAJ o la API de Emisiones—; un archivo suelto no dice qué horas debería
   // haber en el tramo, y sin eso no hay cobertura que medir.
-  const { fallas, mir, descripcion, contaminantesMir, cambiarContaminantesMir } = useDatos();
+  const { fallas, mir, descripcion, contaminantesMir, cambiarContaminantesMir, alternarCeroMir } = useDatos();
 
   const [registros, setRegistros] = useState<RegistroServidor[]>([]);
   const [nivel, setNivel] = useState<Nivel>('todos');
@@ -173,6 +173,7 @@ export default function Registros() {
               mir={mir}
               contaminantes={contaminantesMir}
               onCambiarContaminantes={cambiarContaminantesMir}
+              onAlternarCero={alternarCeroMir}
             />
             <ReporteFallas fallas={fallas} />
           </>

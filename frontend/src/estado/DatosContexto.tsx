@@ -112,6 +112,17 @@ interface Estado {
   entrarEmisiones: (email: string, password: string, recordar?: boolean) => Promise<void>;
   salirEmisiones: () => Promise<void>;
   cambiarContaminantesMir: (c: string[]) => Promise<void>;
+  /**
+   * Aviso de la última consulta si la descarga quedó incompleta (red lenta,
+   * cortes, proxy). null si llegó todo. Ver backend/red.py.
+   */
+  advertencia: string | null;
+  descartarAdvertencia: () => void;
+  /** Repite la última consulta por periodo; solo se pide lo que faltó. */
+  reintentarDescarga: () => Promise<void>;
+  /** Celdas «ESTACIÓN:CONTAMINANTE» con equipo pero sin datos: cuentan como 0. */
+  comoCeroMir: string[];
+  alternarCeroMir: (estacion: string, contaminante: string) => Promise<void>;
   limpiar: () => void;
 }
 
@@ -174,10 +185,15 @@ export function DatosProvider({ children }: { children: ReactNode }) {
   const [mir, setMir] = useState<Mir | null>(null);
   const [fallas, setFallas] = useState<Falla[]>([]);
   const [contaminantesMir, setContaminantesMir] = useState<string[]>(CONTAMINANTES_CRITERIO);
+  // Empieza vacío con cada consulta nueva: marcar que un equipo existe pero no
+  // dio datos es una decisión sobre esas estaciones en ese periodo, y arrastrarla en silencio a
+  // otra consulta cambiaría el indicador sin que nadie lo pidiera.
+  const [comoCeroMir, setComoCeroMir] = useState<string[]>([]);
   const [origen, setOrigen] = useState<Origen | null>(null);
   const [descripcion, setDescripcion] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [advertencia, setAdvertencia] = useState<string | null>(null);
   const [exito, setExito] = useState<string | null>(null);
   const [revalidar, setRevalidar] = useState(true);
   const [config, setConfig] = useState<ConfigValidacion>(CONFIG_POR_DEFECTO);
@@ -219,15 +235,19 @@ export function DatosProvider({ children }: { children: ReactNode }) {
     setResultado(null);
     setMir(null);
     setFallas([]);
+    setComoCeroMir([]);
+    setAdvertencia(null);
     setOrigen(null);
     setDescripcion(null);
     setError(null);
+    setAdvertencia(null);
     setExito(null);
   }, []);
 
   const cargarArchivo = useCallback(async (archivo: File, modo: OrigenArchivo) => {
     setCargando(true);
     setError(null);
+    setAdvertencia(null);
     setExito(null);
     try {
       const subida = await apiService.uploadFile(archivo);
@@ -264,6 +284,7 @@ export function DatosProvider({ children }: { children: ReactNode }) {
   const cargarSimaj = useCallback(async (rango?: Periodo) => {
     setCargando(true);
     setError(null);
+    setAdvertencia(null);
     setExito(null);
 
     // El sondeo del avance vive aquí y no en el menú porque acompaña a la
@@ -284,6 +305,8 @@ export function DatosProvider({ children }: { children: ReactNode }) {
       setResultado(r);
       setMir(r.mir ?? null);
       setFallas(r.fallas ?? []);
+      setComoCeroMir([]);
+      setAdvertencia(r.advertencia ?? null);
       setOrigen('simaj');
       setDescripcion(`SIMAJ · ${r.summary.fecha_inicio} a ${r.summary.fecha_fin}`);
       setExito(
@@ -319,6 +342,7 @@ export function DatosProvider({ children }: { children: ReactNode }) {
   const cargarEmisiones = useCallback(async (rango?: Periodo) => {
     setCargando(true);
     setError(null);
+    setAdvertencia(null);
     setExito(null);
     try {
       // El backend de Emisiones espera la hora explícita; el selector da solo
@@ -335,6 +359,8 @@ export function DatosProvider({ children }: { children: ReactNode }) {
       // dice que tramo pretende cubrir.
       setMir(r.mir ?? null);
       setFallas(r.fallas ?? []);
+      setComoCeroMir([]);
+      setAdvertencia(r.advertencia ?? null);
       setOrigen('emisiones');
       setDescripcion(`Emisiones Jalisco - ${r.summary.fecha_inicio} a ${r.summary.fecha_fin}`);
       setExito(
@@ -355,13 +381,35 @@ export function DatosProvider({ children }: { children: ReactNode }) {
   const cambiarContaminantesMir = useCallback(async (nuevos: string[]) => {
     setContaminantesMir(nuevos);
     try {
-      const r = await minutalesApi.recalcularMir(nuevos);
+      const r = await minutalesApi.recalcularMir(nuevos, comoCeroMir);
       setMir(r.mir);
       setFallas(r.fallas);
     } catch {
       setError('No se pudo recalcular el indicador MIR.');
     }
-  }, []);
+  }, [comoCeroMir]);
+
+  const alternarCeroMir = useCallback(async (estacion: string, contaminante: string) => {
+    const clave = `${estacion}:${contaminante}`;
+    const siguiente = comoCeroMir.includes(clave)
+      ? comoCeroMir.filter(x => x !== clave)
+      : [...comoCeroMir, clave];
+    try {
+      const r = await minutalesApi.recalcularMir(contaminantesMir, siguiente);
+      setComoCeroMir(siguiente);
+      setMir(r.mir);
+      setFallas(r.fallas);
+    } catch {
+      setError('No se pudo recalcular el indicador MIR.');
+    }
+  }, [comoCeroMir, contaminantesMir]);
+
+  const descartarAdvertencia = useCallback(() => setAdvertencia(null), []);
+
+  const reintentarDescarga = useCallback(async () => {
+    if (origen === 'simaj') await cargarSimaj();
+    else if (origen === 'emisiones') await cargarEmisiones();
+  }, [origen, cargarSimaj, cargarEmisiones]);
 
   const valor = useMemo<Estado>(() => ({
     resultado, mir, fallas, contaminantesMir, origen, descripcion,
@@ -369,13 +417,15 @@ export function DatosProvider({ children }: { children: ReactNode }) {
     progresoSimaj,
     setConfig, setRevalidar, setError, setPeriodo,
     cargarArchivo, cargarSimaj, cargarEmisiones,
-    entrarEmisiones, salirEmisiones, cambiarContaminantesMir, limpiar,
+    entrarEmisiones, salirEmisiones, cambiarContaminantesMir, comoCeroMir, alternarCeroMir, limpiar,
+    advertencia, descartarAdvertencia, reintentarDescarga,
   }), [
     resultado, mir, fallas, contaminantesMir, origen, descripcion,
     cargando, error, exito, revalidar, config, sesionEmisiones, periodo,
     progresoSimaj,
     cargarArchivo, cargarSimaj, cargarEmisiones,
-    entrarEmisiones, salirEmisiones, cambiarContaminantesMir, limpiar,
+    entrarEmisiones, salirEmisiones, cambiarContaminantesMir, comoCeroMir, alternarCeroMir, limpiar,
+    advertencia, descartarAdvertencia, reintentarDescarga,
   ]);
 
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;

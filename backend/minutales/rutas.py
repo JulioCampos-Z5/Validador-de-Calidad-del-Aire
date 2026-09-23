@@ -23,7 +23,8 @@ import ultimo
 from flask import Blueprint, jsonify, request, send_file
 
 from . import cliente
-from .mir import CONTAMINANTES_CRITERIO, calcular_mir, diagnostico_fallas
+from .mir import CONTAMINANTES_CRITERIO, calcular_mir, diagnostico_fallas, leer_como_cero
+import red
 
 bp = Blueprint('minutales', __name__, url_prefix='/api/minutales')
 
@@ -116,12 +117,28 @@ def descargar():
         # un 500 en el navegador no dice nada de dónde reventó y se acaba
         # persiguiendo el error a ciegas.
         registros.anotar_error('SIMAJ: falló la descarga de los minutales', e)
+        if red.es_error_de_red(e):
+            return jsonify({'error': red.MENSAJE_RED, 'tipo': 'red'}), 503
         return jsonify({'error': f'Falló la descarga: {e}'}), 502
     finally:
         _progreso['activo'] = False
 
+    informe = df.attrs.get('descarga')
     if df.empty:
+        if informe and (informe.get('archivos_fallidos') or informe.get('estaciones_sin_listado')):
+            # No llegó nada y no porque el SIMAJ no tenga el periodo: fallaron
+            # las peticiones. Decir «no hay datos» mandaría a buscar mal.
+            aviso = red.aviso_de_descarga(informe)
+            registros.anotar_error(f'SIMAJ: no se descargó nada. {aviso}')
+            return jsonify({'error': red.MENSAJE_RED if informe.get('causa') == 'red' else aviso,
+                            'tipo': informe.get('causa'), 'descarga': informe}), 503
         return jsonify({'error': 'El SIMAJ no devolvió datos para ese periodo.'}), 404
+
+    aviso = red.aviso_de_descarga(informe)
+    if aviso:
+        # Queda en «Registros del servidor»: cuando alguien diga que le faltan
+        # datos, aquí está en qué computadora y por qué.
+        registros.anotar_error(f'SIMAJ: {aviso}')
 
     # El MIR se calcula sobre los datos crudos, ANTES de validar. Mide cuánto
     # publicó la red, no cuánto sobrevivió a las reglas: si se calculara después,
@@ -173,6 +190,8 @@ def descargar():
                                     if not stats_detalladas.empty else []),
         'mir': mir,
         'fallas': diagnostico_fallas(mir),
+        'descarga': informe,
+        'advertencia': aviso,
     })
 
 
@@ -185,8 +204,9 @@ def recalcular_mir():
     cuerpo = request.get_json(silent=True) or {}
     contaminantes = cuerpo.get('contaminantes') or CONTAMINANTES_CRITERIO
     umbral = float(cuerpo.get('umbral', 75))
+    como_cero = leer_como_cero(cuerpo.get('como_cero'))
 
-    mir = calcular_mir(ultimo.datos(), contaminantes, umbral)
+    mir = calcular_mir(ultimo.datos(), contaminantes, umbral, como_cero)
     return jsonify({'mir': mir, 'fallas': diagnostico_fallas(mir)})
 
 
@@ -209,6 +229,9 @@ def _tabla_mir(mir: dict) -> pd.DataFrame:
             fila[c] = '' if v is None else v
         fila['Total'] = f['total']
         fila['Cumple'] = 'Si' if f['cumple'] else 'No'
+        # Los 0 que marcó el usuario: hay equipo pero no dio datos. Se listan
+        # para que quien lea la hoja sepa por qué esas celdas no están vacías.
+        fila['Con equipo sin datos (0)'] = ', '.join(f.get('como_cero', []))
         filas.append(fila)
     return pd.DataFrame(filas)
 
@@ -246,7 +269,8 @@ def _mir_pedido():
     """El MIR del último periodo, con los contaminantes que pida la petición."""
     contaminantes = request.args.get('contaminantes')
     elegidos = contaminantes.split(',') if contaminantes else CONTAMINANTES_CRITERIO
-    return calcular_mir(ultimo.datos(), elegidos)
+    como_cero = leer_como_cero(request.args.get('como_cero', ''))
+    return calcular_mir(ultimo.datos(), elegidos, como_cero=como_cero)
 
 
 @bp.route('/reporte.xlsx', methods=['GET'])

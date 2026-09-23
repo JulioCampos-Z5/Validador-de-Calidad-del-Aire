@@ -41,6 +41,7 @@ from flask import Blueprint, jsonify, request
 # El indicador es el mismo mire donde mire: lo que cambia es de dónde salieron
 # las filas. Ver minutales/mir.py.
 from minutales.mir import CONTAMINANTES_CRITERIO, calcular_mir, diagnostico_fallas
+import red
 
 from . import almacen, cliente
 from .cliente import ErrorEmisiones, SesionCaducada
@@ -280,6 +281,11 @@ def descargar():
             'error': 'La API no devolvió datos para ese periodo.'
         }), 404
 
+    informe = df.attrs.get('descarga')
+    aviso = red.aviso_de_descarga(informe)
+    if aviso:
+        registros.anotar_error(f'Emisiones: {aviso}')
+
     # El MIR se calcula sobre los datos crudos, ANTES de validar, igual que con
     # el SIMAJ: mide cuánto publicó la red, no cuánto sobrevivió a las reglas.
     # Si se calculara después, una estación con un sensor descalibrado se vería
@@ -329,4 +335,6 @@ def descargar():
                                     if not stats_detalladas.empty else []),
         'mir': mir,
         'fallas': diagnostico_fallas(mir),
+        'descarga': informe,
+        'advertencia': aviso,
     })

@@ -46,6 +46,8 @@ import numpy as np
 import pandas as pd
 import requests
 
+import red
+
 BASE = 'https://emisiones.jalisco.gob.mx:4443/consultas/api'
 
 RUTA_TOKEN = f'{BASE}/Authentication/requestToken'
@@ -184,6 +186,13 @@ class ErrorEmisiones(Exception):
         self.codigo = codigo
 
 
+class ErrorDeRed(ErrorEmisiones):
+    """La conexión no alcanzó: vencimientos o cortes aun después de reintentar."""
+
+    def __init__(self, mensaje: str = red.MENSAJE_RED):
+        super().__init__(mensaje, codigo=503)
+
+
 class CredencialesInvalidas(ErrorEmisiones):
     def __init__(self, mensaje: str = 'Correo o contraseña incorrectos.'):
         super().__init__(mensaje, codigo=401)
@@ -230,15 +239,10 @@ def _sesion_http(concurrencia: int = CONCURRENCIA) -> requests.Session:
     hilos, requests las descarta y las rehace, y urllib3 lo avisa una vez por
     descarte.
     """
-    s = requests.Session()
-    s.headers.update({
-        'User-Agent': 'validador-calidad-aire/1.0',
-        'Accept': 'application/json',
-    })
-    adaptador = requests.adapters.HTTPAdapter(
-        pool_connections=concurrencia, pool_maxsize=concurrencia)
-    s.mount('https://', adaptador)
-    s.mount('http://', adaptador)
+    # Con reintentos solo para GET (ver red.py): el POST del token no se
+    # repite solo, para no mandar la contraseña más veces de las pedidas.
+    s = red.sesion(concurrencia)
+    s.headers.update({'Accept': 'application/json'})
     return s
 
 
@@ -324,6 +328,10 @@ def solicitar_token(email: str, password: str) -> dict:
             timeout=TIEMPO_ESPERA,
         )
     except requests.RequestException as e:
+        if red.es_error_de_red(e):
+            raise ErrorDeRed(
+                'No se pudo contactar con la API de Emisiones: la conexión a '
+                'internet falló o es demasiado lenta. Revisa la red y vuelve a intentar.')
         raise ErrorEmisiones(f'No se pudo contactar con la API de Emisiones: {e}')
 
     # La API responde 400 "Invalid Request" a unas credenciales que no valen,
@@ -390,8 +398,10 @@ def consultar_minutales(
     for cabeceras in intentos:
         try:
             r = s.get(RUTA_MINUTALES, params=params, headers=cabeceras,
-                      timeout=TIEMPO_ESPERA)
+                      timeout=(red.TIEMPO_CONEXION, TIEMPO_ESPERA))
         except requests.RequestException as e:
+            if red.es_error_de_red(e):
+                raise ErrorDeRed()
             raise ErrorEmisiones(f'No se pudo consultar la API de Emisiones: {e}')
         if r.status_code not in (401, 403):
             ultima = r
@@ -410,7 +420,13 @@ def consultar_minutales(
     try:
         cuerpo = ultima.json()
     except ValueError:
-        raise ErrorEmisiones('La API devolvió algo que no es JSON.')
+        # Un JSON cortado a la mitad también cae aquí: la conexión se cerró
+        # antes de terminar de recibir. No es la red la única causa posible
+        # —un proxy que responde con su propia página también—, pero los dos
+        # se arreglan igual: otra red o reintentar.
+        raise ErrorEmisiones(
+            'La API devolvió una respuesta incompleta o que no es JSON. Suele ser '
+            'la red (se cortó al recibir) o un proxy intermedio.')
 
     return _lista_de_registros(cuerpo)
 
@@ -981,24 +997,54 @@ def descargar(
             crudos.extend(guardado)
 
     bloques = _bloques(faltantes, trozo_dias)
+    fallidos: list[tuple[date, date]] = []
+    error_de_red = False
+    ultimo_error: ErrorEmisiones | None = None
+
     if bloques:
         def traer(bloque):
             ini, fin = bloque
-            return consultar_minutales(
-                token,
-                datetime.combine(ini, datetime.min.time()),
-                datetime.combine(fin + timedelta(days=1), datetime.min.time()),
-            )
+            try:
+                return bloque, consultar_minutales(
+                    token,
+                    datetime.combine(ini, datetime.min.time()),
+                    datetime.combine(fin + timedelta(days=1), datetime.min.time()),
+                ), None
+            except SesionCaducada:
+                raise  # esto no se arregla reintentando: hay que volver a entrar
+            except ErrorEmisiones as e:
+                return bloque, None, e
 
+        def recibir(resultados):
+            nonlocal error_de_red, ultimo_error
+            for bloque, registros, error in resultados:
+                if error is None:
+                    nuevos.extend(registros)
+                else:
+                    fallidos.append(bloque)
+                    ultimo_error = error
+                    error_de_red = error_de_red or isinstance(error, ErrorDeRed)
+
+        # Cada bloque falla por su cuenta. Antes el primer fallo tiraba la
+        # consulta entera y se perdía también lo que sí había llegado.
+        nuevos: list[dict] = []
         with ThreadPoolExecutor(max_workers=max(1, concurrencia)) as pool:
-            for registros in pool.map(traer, bloques):
-                crudos.extend(registros)
+            recibir(list(pool.map(traer, bloques)))
+
+        # Segunda vuelta, de uno en uno: en una red saturada, tres consultas
+        # pesadas a la vez pueden vencer juntas y pasar por separado.
+        if fallidos:
+            pendientes, fallidos[:] = list(fallidos), []
+            recibir([traer(b) for b in pendientes])
+
+        crudos.extend(nuevos)
 
         if carpeta_cache:
             # Se cachea por día y no por bloque para que un rango que empieza a
             # mitad de semana reaproveche lo ya bajado en vez de pedirlo entero.
+            # Solo lo que llegó: así reintentar pide únicamente lo que faltó.
             por_dia: dict[date, list[dict]] = {d: [] for d in faltantes}
-            for registro in crudos:
+            for registro in nuevos:
                 dia = _dia_del_registro(registro)
                 if dia in por_dia:
                     por_dia[dia].append(registro)
@@ -1006,5 +1052,22 @@ def descargar(
                 if registros:
                     _guardar_cache(carpeta_cache, dia, registros)
 
-    df = normalizar(crudos)
-    return _recortar(df, desde, hasta)
+    dias_fallidos = sorted({
+        d for ini, fin in fallidos for d in faltantes if ini <= d <= fin
+    })
+    if bloques and len(fallidos) == len(bloques) and not (set(dias) - set(faltantes)):
+        # No llegó nada, ni había nada guardado: no hay datos que mostrar.
+        raise ultimo_error if ultimo_error else ErrorDeRed()
+
+    df = _recortar(normalizar(crudos), desde, hasta)
+    df.attrs['descarga'] = {
+        'completa': not dias_fallidos,
+        'dias_pedidos': len(dias),
+        'dias_de_cache': len(dias) - len(faltantes),
+        'dias_fallidos': [d.isoformat() for d in dias_fallidos],
+        'porcentaje_descargado': (round(100.0 * (len(dias) - len(dias_fallidos)) / len(dias), 1)
+                                  if dias else 100.0),
+        'causa': ('red' if error_de_red else 'servidor') if dias_fallidos else None,
+        'detalle': str(ultimo_error) if dias_fallidos and ultimo_error else None,
+    }
+    return df
