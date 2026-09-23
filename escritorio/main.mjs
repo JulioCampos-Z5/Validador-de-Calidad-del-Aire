@@ -23,6 +23,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
+import { esWeb } from './seguridad.mjs';
 
 const aqui = dirname(fileURLToPath(import.meta.url));
 const raiz = join(aqui, '..');
@@ -141,12 +142,24 @@ function crearVentana() {
     // El instalador ya pone el icono en el acceso directo; esto es para la
     // ventana y la barra de tareas, que si no salen con el de Electron.
     icon: join(aqui, 'icono.png'),
-    webPreferences: { contextIsolation: true, nodeIntegration: false },
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
 
+  // Un enlace que abre ventana nueva va al navegador del sistema, pero solo si
+  // es http(s). shell.openExternal abre cualquier protocolo —file:, ms-msdt:,
+  // lo que haya registrado en Windows—, y pasárselo sin mirar convertía un
+  // fallo de inyección en la página en ejecutar programas en el equipo.
   ventana.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (esWeb(url)) shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  // La ventana principal solo muestra la app. Si algo intenta llevarla a otro
+  // sitio, se abre fuera y la app se queda donde estaba.
+  ventana.webContents.on('will-navigate', (evento, url) => {
+    if (url.startsWith(BASE + '/') || url === BASE) return;
+    evento.preventDefault();
+    if (esWeb(url)) shell.openExternal(url);
   });
 
   ventana.loadURL(BASE);

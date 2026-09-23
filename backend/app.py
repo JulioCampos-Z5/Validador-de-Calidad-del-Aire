@@ -10,6 +10,7 @@ from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
 import math
 from werkzeug.utils import secure_filename
+from werkzeug.security import safe_join
 import os
 import sys
 import tempfile
@@ -21,8 +22,29 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
+# En Windows la consola —y la tubería por la que Electron lee al backend— va en
+# cp1252, que no sabe escribir «⚠️». Un print así lanzaba UnicodeEncodeError
+# dentro de la carga del archivo, el except se lo comía y la carga entera
+# devolvía None: el archivo no abría por culpa de un mensaje de consola.
+# Con errors='backslashreplace' un carácter raro se escribe escapado y ya.
+for _flujo in (sys.stdout, sys.stderr):
+    try:
+        _flujo.reconfigure(errors='backslashreplace')
+    except (AttributeError, ValueError):
+        pass
+
 app = Flask(__name__)
-CORS(app)
+
+# CORS solo para el servidor de desarrollo de Vite, por si alguien lo apunta
+# directo al 8000. En uso normal no hace falta: la app de escritorio y Docker
+# sirven página y API desde el mismo origen, y en desarrollo Vite pasa por
+# proxy. Abierto a todos, cualquier página que el usuario tuviera abierta podía
+# leer la API en 127.0.0.1 —datos cargados, sesión de Emisiones—.
+# VALIDADOR_CORS admite orígenes extra separados por comas.
+ORIGENES_PERMITIDOS = ['http://localhost:3000', 'http://127.0.0.1:3000'] + [
+    o.strip() for o in os.environ.get('VALIDADOR_CORS', '').split(',') if o.strip()
+]
+CORS(app, origins=ORIGENES_PERMITIDOS)
 
 
 def _sanear_json(valor):
@@ -1096,6 +1118,27 @@ def exportar_resultados(df_validado, archivo_salida):
 # ENDPOINTS DE LA API
 # ============================================================================
 
+def ruta_en_carpeta(carpeta, nombre):
+    """
+    La ruta de `nombre` dentro de `carpeta`, o None si el nombre no es seguro.
+
+    El nombre lo manda el cliente, así que solo se acepta un nombre simple: sin
+    separadores —ni «/» ni «\», que en Windows también lo es—, sin «..» y sin
+    unidad. `os.path.join` descarta la carpeta base si el segundo argumento es
+    absoluto, y sin esta comprobación se podía leer o descargar cualquier
+    archivo del disco.
+    """
+    if not isinstance(nombre, str) or not nombre or nombre in ('.', '..'):
+        return None
+    if '/' in nombre or '\\' in nombre or ':' in nombre or '\x00' in nombre:
+        return None
+    base = os.path.realpath(carpeta)
+    ruta = os.path.realpath(os.path.join(base, nombre))
+    if os.path.dirname(ruta) != base:
+        return None
+    return ruta
+
+
 def allowed_file(filename):
     """Verificar si el archivo tiene una extensión permitida"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -1260,8 +1303,10 @@ def validate_full():
         return jsonify({'error': 'Se requiere el nombre del archivo'}), 400
     
     filename = data['filename']
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    
+    filepath = ruta_en_carpeta(app.config['UPLOAD_FOLDER'], filename)
+    if filepath is None:
+        return jsonify({'error': 'Nombre de archivo no válido'}), 400
+
     if not os.path.exists(filepath):
         return jsonify({'error': 'Archivo no encontrado'}), 404
     
@@ -1338,8 +1383,10 @@ def validate_full():
 @app.route('/api/download/<filename>', methods=['GET'])
 def download_file(filename):
     """Descargar archivo procesado"""
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    
+    filepath = ruta_en_carpeta(app.config['UPLOAD_FOLDER'], filename)
+    if filepath is None:
+        return jsonify({'error': 'Nombre de archivo no válido'}), 400
+
     if not os.path.exists(filepath):
         return jsonify({'error': 'Archivo no encontrado'}), 404
     
@@ -1360,7 +1407,9 @@ def preview_validated():
         return jsonify({'error': 'Se requiere el nombre del archivo'}), 400
 
     filename = data['filename']
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    filepath = ruta_en_carpeta(app.config['UPLOAD_FOLDER'], filename)
+    if filepath is None:
+        return jsonify({'error': 'Nombre de archivo no válido'}), 400
 
     if not os.path.exists(filepath):
         return jsonify({'error': 'Archivo no encontrado'}), 404
@@ -1418,8 +1467,11 @@ def servir_frontend(ruta):
     if not os.path.isdir(FRONTEND_DIST):
         return jsonify({'error': 'Frontend no compilado. Ejecuta: npm --prefix frontend run build'}), 404
 
-    archivo = os.path.join(FRONTEND_DIST, ruta)
-    if ruta and os.path.isfile(archivo):
+    # safe_join devuelve None si la ruta intenta salir de la carpeta («..»,
+    # rutas absolutas, «\» en Windows). Con os.path.join, /../../lo-que-sea
+    # servía cualquier archivo del disco.
+    archivo = safe_join(FRONTEND_DIST, ruta) if ruta else None
+    if archivo and os.path.isfile(archivo):
         return send_file(archivo)
     # Cualquier otra ruta devuelve index.html: el enrutado es del lado del
     # cliente (react-router), asi que /minutales no es un archivo en disco.
