@@ -169,13 +169,13 @@ export default function PerfilHorario({ data }: Props) {
       height: 420,
       margin: { t: 20, r: hayCruce ? 70 : 30, b: 60, l: 70 },
       xaxis: {
-        title: 'Hora del día',
+        title: { text: 'Hora del día' },
         dtick: 1,
         range: [-0.5, 23.5],
         zeroline: false,
       },
       yaxis: {
-        title: `${parametro}${unidad(parametro) ? ` [${unidad(parametro)}]` : ''}`,
+        title: { text: `${parametro}${unidad(parametro) ? ` [${unidad(parametro)}]` : ''}` },
         automargin: true,
         zeroline: false,
       },
@@ -187,7 +187,7 @@ export default function PerfilHorario({ data }: Props) {
 
     if (hayCruce && cruce) {
       disposicion.yaxis2 = {
-        title: `${cruce}${unidad(cruce) ? ` [${unidad(cruce)}]` : ''}`,
+        title: { text: `${cruce}${unidad(cruce) ? ` [${unidad(cruce)}]` : ''}` },
         overlaying: 'y',
         side: 'right',
         automargin: true,

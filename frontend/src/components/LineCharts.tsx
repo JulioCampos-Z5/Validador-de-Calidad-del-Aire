@@ -51,6 +51,39 @@ function hexToRgba(hex: string, alpha: number) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+type Eje = 'y1' | 'y2' | 'y3';
+
+// Mismo color que el botón Y1/Y2/Y3 de cada parámetro, para que se vea a qué
+// eje pertenece cada escala.
+const COLORES_EJE: Record<Eje, string> = { y1: '#3b82f6', y2: '#f97316', y3: '#a855f7' };
+
+// Trazo por eje cuando el usuario no eligió uno: así las líneas de Y2 y Y3 se
+// distinguen de las de Y1 aunque compartan color de estación.
+const TRAZO_EJE: Record<Eje, 'solid' | 'dash' | 'dot'> = { y1: 'solid', y2: 'dash', y3: 'dot' };
+
+// Plotly 3 ya no acepta `title` como texto plano: hay que pasar
+// `title.text`, o el eje se queda sin título.
+//
+// `fixedrange: false` va explícito porque, con el deslizador de rango en el
+// eje X, Plotly bloquea por defecto los ejes Y anclados a él (Y1 y Y2) y no
+// deja arrastrarlos para cambiar su escala. Y3 se salvaba solo por ir libre.
+//
+// `uirevision` con el título: la escala que ajuste el usuario sobrevive a los
+// re-render (marcar una estación, cambiar un color) y solo se reinicia cuando
+// cambian los parámetros de ese eje.
+function estiloEje(titulo: string, color: string) {
+  return {
+    title: { text: titulo, font: { color } },
+    fixedrange: false,
+    uirevision: titulo,
+    tickfont: { color },
+    linecolor: color,
+    showline: true,
+    automargin: true,
+    zeroline: false,
+  };
+}
+
 function getNumeric(val: any): number | null {
   if (typeof val === 'number' && !isNaN(val)) return val;
   return null;
@@ -129,7 +162,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
   const setAxis = (p: string, axis: 'y1' | 'y2' | 'y3') =>
     setAxisAssignments(prev => ({ ...prev, [p]: axis }));
 
-  const getLineStyle = (p: string): 'solid' | 'dash' | 'dot' => lineStyles[p] || 'solid';
+  const getLineStyle = (p: string): 'solid' | 'dash' | 'dot' => lineStyles[p] || TRAZO_EJE[getAxis(p)];
   const setLineStyle = (p: string, style: 'solid' | 'dash' | 'dot') =>
     setLineStyles(prev => ({ ...prev, [p]: style }));
 
@@ -152,13 +185,15 @@ const LineCharts = ({ data }: LineChartsProps) => {
         setAxisAssignments(a => { const { [p]: _, ...rest } = a; return rest; });
       } else {
         next.add(p);
-        // Auto-asignación: al mezclar tipos distintos, el nuevo va a Y2.
+        // Auto-asignación: si ya hay uno de su mismo tipo, comparte su eje
+        // (NO2 junto al O3, no junto a la temperatura); si solo hay del otro
+        // tipo, el nuevo va a Y2.
         const isMeteo = METEOROLOGICOS.includes(p);
-        const hasOtroTipo = Array.from(next).some(x => {
-          if (x === p) return false;
-          return METEOROLOGICOS.includes(x) !== isMeteo;
-        });
-        if (hasOtroTipo) {
+        const otros = Array.from(next).filter(x => x !== p);
+        const mismoTipo = otros.find(x => METEOROLOGICOS.includes(x) === isMeteo);
+        if (mismoTipo) {
+          setAxisAssignments(a => ({ ...a, [p]: a[mismoTipo] || 'y1' }));
+        } else if (otros.length > 0) {
           setAxisAssignments(a => ({ ...a, [p]: 'y2' }));
         }
       }
@@ -383,12 +418,10 @@ const LineCharts = ({ data }: LineChartsProps) => {
         tickformat: '%d %b %y %H:%M',
         rangeslider: { visible: true, thickness: 0.05 },
         tickangle: -35,
-        domain: [0, hasY3 ? 0.92 : 1],
+        domain: [0, hasY3 ? 0.9 : 1],
       },
       yaxis: {
-        title: getAxisLabel(y1Params) || 'Valor',
-        automargin: true,
-        zeroline: false,
+        ...estiloEje(getAxisLabel(y1Params) || 'Valor', COLORES_EJE.y1),
         showgrid: true,
       },
       legend: {
@@ -404,28 +437,27 @@ const LineCharts = ({ data }: LineChartsProps) => {
       plot_bgcolor: '#f9fafb',
       paper_bgcolor: '#ffffff',
       shapes: constantRunShapes,
+      // Sin esto, cada Plotly.react devolvía todos los ejes a su escala
+      // automática y se perdía el zoom del usuario.
+      uirevision: 'series',
     };
 
     if (y2Params.length > 0) {
       base.yaxis2 = {
-        title: getAxisLabel(y2Params),
+        ...estiloEje(getAxisLabel(y2Params), COLORES_EJE.y2),
         overlaying: 'y',
         side: 'right',
-        automargin: true,
-        zeroline: false,
         showgrid: false,
       };
     }
 
     if (hasY3) {
       base.yaxis3 = {
-        title: getAxisLabel(y3Params),
+        ...estiloEje(getAxisLabel(y3Params), COLORES_EJE.y3),
         overlaying: 'y',
         side: 'right',
-        position: 0.98,
+        position: 1,
         anchor: 'free',
-        automargin: true,
-        zeroline: false,
         showgrid: false,
       };
     }
@@ -534,7 +566,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
             </div>
             <p className="text-xs text-gray-400 mb-2">
               Mezcla libremente contaminantes y variables meteorológicas. <strong>Y1/Y2</strong> = eje izquierdo/derecho.
-              Al combinar tipos, el nuevo se asigna automáticamente a Y2.
+              Cada parámetro nuevo va al eje de los de su tipo; si no hay ninguno, a Y2.
             </p>
             <div className="max-h-64 overflow-y-auto pr-1 space-y-3">
               {([
@@ -672,7 +704,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
               ⇔ Y3 (derecho exterior, punteado): {Array.from(selectedParams).filter(p => getAxis(p) === 'y3').join(', ')}
             </span>
           )}
-          <span className="ml-auto text-gray-400">Usa el control deslizante inferior para enfocar un período</span>
+          <span className="ml-auto text-gray-400">Deslizador inferior: periodo · Arrastra un eje Y para cambiar su escala (extremos estiran, centro desplaza) · Doble clic restablece</span>
         </div>
       </div>
 
