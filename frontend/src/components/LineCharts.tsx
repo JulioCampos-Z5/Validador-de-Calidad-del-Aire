@@ -1,6 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-// @ts-ignore — el bundle dist es browser-ready pero no tiene declaraciones de tipo propias
-import Plotly from 'plotly.js/dist/plotly.js';
+import Plotly from '../graficas/plotly';
 import {
   rejillaHoraria, serieEnRejilla, agregadoZona, type Agregado,
 } from '../graficas/series';
@@ -10,6 +9,9 @@ import {
   COLORES_ESTACIONES,
   getUnitsAndName,
   getAxisLabel,
+  umbralesIndice,
+  UMBRALES_2026,
+  CATEGORIAS_INDICE_JALISCO,
 } from '../constants';
 
 interface DataPoint {
@@ -146,6 +148,37 @@ const LineCharts = ({ data }: LineChartsProps) => {
     return index;
   }, [data]);
 
+  // Qué parámetros trae cada estación en los datos cargados: basta una hora
+  // con número. Es solo informativo, para saber antes de marcar qué se puede
+  // comparar con qué; no deshabilita nada.
+  const disponibles = useMemo(() => {
+    const todos = [...CONTAMINANTES, ...METEOROLOGICOS];
+    const porEstacion: Record<string, Set<string>> = {};
+    Object.entries(dataByStation).forEach(([estacion, filas]) => {
+      porEstacion[estacion] = new Set(
+        todos.filter(p => filas.some(f => getNumeric(f[p]) !== null)),
+      );
+    });
+    return porEstacion;
+  }, [dataByStation]);
+
+  const resumenEstacion = (estacion: string) => {
+    const tiene = disponibles[estacion] || new Set<string>();
+    const cont = CONTAMINANTES.filter(p => tiene.has(p));
+    const met = METEOROLOGICOS.filter(p => tiene.has(p));
+    const faltan = [...CONTAMINANTES, ...METEOROLOGICOS].filter(p => !tiene.has(p));
+    return {
+      cont, met,
+      detalle: [
+        `Contaminantes (${cont.length}/${CONTAMINANTES.length}): ${cont.join(', ') || '—'}`,
+        `Meteorológicos (${met.length}/${METEOROLOGICOS.length}): ${met.join(', ') || '—'}`,
+        faltan.length ? `Sin datos: ${faltan.join(', ')}` : 'Tiene todos los parámetros',
+      ].join('\n'),
+    };
+  };
+
+  const estacionesCon = (param: string) => stations.filter(s => disponibles[s]?.has(param));
+
   // Todas las horas del periodo, hayan medido o no. Las estaciones se dibujan
   // sobre esta rejilla para que una hora sin dato sea un hueco y no una recta
   // uniendo la medición anterior con la siguiente. Ver graficas/series.ts.
@@ -163,6 +196,10 @@ const LineCharts = ({ data }: LineChartsProps) => {
   // Asignación de eje: default = y1, puede moverse a y2 o y3 (para mezclar unidades)
   const [axisAssignments, setAxisAssignments] = useState<Record<string, 'y1' | 'y2' | 'y3'>>({});
   const [showValidationAlerts, setShowValidationAlerts] = useState(true);
+  // Contaminante cuyas categorías del índice Aire y Salud se pintan de fondo.
+  // 'auto' = el primero con índice, empezando por Y1; 'ninguno' = apagado; o
+  // un contaminante concreto elegido a mano.
+  const [fondoIndice, setFondoIndice] = useState<string>('auto');
   // Estilo de línea por parámetro (override manual)
   const [lineStyles, setLineStyles] = useState<Record<string, 'solid' | 'dash' | 'dot'>>({});
   // Color de línea por parámetro (override manual)
@@ -430,6 +467,85 @@ const LineCharts = ({ data }: LineChartsProps) => {
     return shapes;
   }, [dataByStation, rejilla, selectedStations, selectedParams, showValidationAlerts]);
 
+  // Los seleccionados que tienen índice, para ofrecerlos como fondo. Si el
+  // elegido se desmarca, el fondo se apaga solo.
+  const conIndice = Array.from(selectedParams).filter(p => umbralesIndice(p));
+  const orden: Record<Eje, number> = { y1: 0, y2: 1, y3: 2 };
+  const fondoAuto = [...conIndice].sort((a, b) => orden[getAxis(a)] - orden[getAxis(b)])[0] ?? null;
+  // Un contaminante elegido a mano que luego se desmarca vuelve a automático.
+  const fondoActivo = fondoIndice === 'ninguno' ? null
+    : fondoIndice !== 'auto' && selectedParams.has(fondoIndice) ? fondoIndice
+    : fondoAuto;
+
+  // Relleno bajo la curva con las categorías del índice: cada tramo de área,
+  // del color de la categoría en la que cae. Se rellena bajo una sola curva
+  // —la de la estación si hay una, el promedio de lo seleccionado si hay
+  // varias— para no encimar rellenos.
+  //
+  // Cada categoría es la franja entre min(v, desde) y min(v, hasta). Donde el
+  // dato no llega a la categoría los dos bordes valen v y el relleno mide
+  // cero, así el área sigue la curva sin cortes al cruzar un umbral.
+  //
+  // Se dibuja como polígonos cerrados, uno por tramo continuo de datos, y no
+  // con fill:'tonexty': ese relleno no respeta los huecos y, al llegar a una
+  // hora sin dato, une el área con el principio de la gráfica.
+  const rellenoIndice = useMemo(() => {
+    if (!fondoActivo) return [];
+    const cortes = umbralesIndice(fondoActivo)!;
+    const eje = plotlyAxis(getAxis(fondoActivo));
+
+    const estaciones = Array.from(selectedStations);
+    if (estaciones.length === 0) return [];
+    const series = estaciones.map(s => serieEnRejilla(dataByStation[s] || [], rejilla, fondoActivo));
+    const curva = rejilla.map((_, i) => {
+      const valores = series.map(v => v[i]).filter((v): v is number => v !== null);
+      return valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+    });
+
+    // El piso del relleno es el dato más bajo del eje, no el cero: bajar más
+    // obligaría a Plotly a estirar la escala para hacerle sitio.
+    let piso = Infinity;
+    traces.forEach(t => {
+      if (t.yaxis !== eje) return;
+      (t.y as (number | null)[]).forEach(v => {
+        if (v !== null && v < piso) piso = v;
+      });
+    });
+    if (piso === Infinity) return [];
+
+    const limites = [piso, ...cortes, Infinity];
+
+    // Tramos [inicio, fin] sin huecos.
+    const tramos: [number, number][] = [];
+    curva.forEach((v, i) => {
+      if (v === null) return;
+      const ultimo = tramos[tramos.length - 1];
+      if (ultimo && ultimo[1] === i - 1) ultimo[1] = i;
+      else tramos.push([i, i]);
+    });
+
+    return CATEGORIAS_INDICE_JALISCO.flatMap(({ color }, i) => {
+      const desde = limites[i], hasta = limites[i + 1];
+      if (desde === undefined || hasta === undefined) return [];
+      // Categoría que el dato nunca alcanza: no hace falta dibujarla.
+      if (!curva.some(v => v !== null && v > desde)) return [];
+      // Contorno de cada tramo: el borde superior de ida y el inferior de
+      // vuelta; un null separa un polígono del siguiente.
+      const x: (string | null)[] = [];
+      const y: (number | null)[] = [];
+      tramos.forEach(([a, b]) => {
+        for (let i = a; i <= b; i++) { x.push(rejilla[i]); y.push(Math.min(curva[i]!, hasta)); }
+        for (let i = b; i >= a; i--) { x.push(rejilla[i]); y.push(Math.min(curva[i]!, desde)); }
+        x.push(null); y.push(null);
+      });
+      return [{
+        type: 'scatter', mode: 'lines', x, y, yaxis: eje,
+        fill: 'toself', fillcolor: hexToRgba(color, 0.35),
+        line: { width: 0 }, hoverinfo: 'skip', showlegend: false,
+      }];
+    });
+  }, [traces, fondoActivo, axisAssignments, selectedStations, dataByStation, rejilla]);
+
   const layout = useMemo(() => {
     const y1Params = Array.from(selectedParams).filter(p => getAxis(p) === 'y1');
     const y2Params = Array.from(selectedParams).filter(p => getAxis(p) === 'y2');
@@ -480,6 +596,9 @@ const LineCharts = ({ data }: LineChartsProps) => {
         ...estiloEje(getAxisLabel(y2Params), COLORES_EJE.y2),
         overlaying: 'y',
         side: 'right',
+        // Plotly 4 alinea por defecto las marcas de un eje superpuesto con las
+        // de Y1 ('sync'); cada eje calcula las suyas, como antes.
+        tickmode: 'auto',
         showgrid: false,
       };
     }
@@ -491,6 +610,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
         side: 'right',
         position: 1,
         anchor: 'free',
+        tickmode: 'auto',
         showgrid: false,
       };
     }
@@ -503,10 +623,10 @@ const LineCharts = ({ data }: LineChartsProps) => {
   // Llama directamente a Plotly.react() para garantizar re-render inmediato
   useEffect(() => {
     if (!chartRef.current) return;
-    const allTraces = [...traces, ...pm25pm10AlertTraces];
+    const allTraces = [...rellenoIndice, ...traces, ...pm25pm10AlertTraces];
     const plotConfig = { responsive: true, displayModeBar: true, scrollZoom: true };
     Plotly.react(chartRef.current, allTraces, layout as any, plotConfig);
-  }, [traces, pm25pm10AlertTraces, layout]);
+  }, [rellenoIndice, traces, pm25pm10AlertTraces, layout]);
 
   return (
     <div className="space-y-4">
@@ -548,10 +668,23 @@ const LineCharts = ({ data }: LineChartsProps) => {
                       className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
                     />
                   </div>
-                  <span
-                    className="text-gray-700 cursor-pointer"
-                    onClick={() => toggleStation(station)}
-                  >{station}</span>
+                  {(() => {
+                    const { cont, met, detalle } = resumenEstacion(station);
+                    return (
+                      <span
+                        className="flex flex-col leading-tight cursor-pointer"
+                        onClick={() => toggleStation(station)}
+                        title={detalle}
+                      >
+                        <span className="text-gray-700">{station}</span>
+                        <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                          <span className="text-green-700">{cont.length} cont</span>
+                          {' · '}
+                          <span className="text-purple-700">{met.length} met</span>
+                        </span>
+                      </span>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
@@ -684,6 +817,20 @@ const LineCharts = ({ data }: LineChartsProps) => {
                           />
                           <span className="font-medium" style={{ color: getLineColor(param) }}>{param}</span>
                           {getUnitsAndName(param).unit && <span className="text-gray-400 text-xs">({getUnitsAndName(param).unit})</span>}
+                          {(() => {
+                            const con = estacionesCon(param);
+                            const sin = stations.filter(s => !con.includes(s));
+                            return (
+                              <span
+                                className={`text-[10px] whitespace-nowrap ${con.length === 0 ? 'text-red-400' : 'text-gray-400'}`}
+                                title={con.length === 0
+                                  ? 'Ninguna estación tiene datos de este parámetro'
+                                  : `Con datos: ${con.join(', ')}` + (sin.length ? `\nSin datos: ${sin.join(', ')}` : '')}
+                              >
+                                {con.length === 0 ? 'sin datos' : `${con.length}/${stations.length} est.`}
+                              </span>
+                            );
+                          })()}
                         </label>
                         {selectedParams.has(param) && (
                           <div className="flex items-center gap-1 ml-2 flex-wrap">
@@ -773,6 +920,60 @@ const LineCharts = ({ data }: LineChartsProps) => {
               <span className="flex items-center gap-1">
                 <span className="inline-block w-6 h-3 rounded" style={{ background: 'rgba(255,140,0,0.25)', border: '1.5px dotted rgba(255,140,0,0.7)' }} />
                 Valor constante &gt;3 h
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Relleno bajo la curva con el índice Aire y Salud */}
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <span className="font-medium">Relleno índice Aire y Salud:</span>
+            <select
+              value={fondoIndice !== 'auto' && fondoIndice !== 'ninguno' && !selectedParams.has(fondoIndice) ? 'auto' : fondoIndice}
+              onChange={e => setFondoIndice(e.target.value)}
+              disabled={conIndice.length === 0}
+              className="border border-gray-300 rounded-md px-2 py-1 text-sm bg-white disabled:bg-gray-100 disabled:text-gray-400"
+              title={conIndice.length === 0
+                ? 'Selecciona O3, NO2, SO2, CO, PM10 o PM2.5 para usar el relleno'
+                : 'Rellena bajo la curva de ese contaminante con el color de su categoría del índice'}
+            >
+              <option value="auto">Automático{fondoAuto ? ` (${fondoAuto})` : ''}</option>
+              <option value="ninguno">Ninguno</option>
+              {conIndice.map(p => (
+                <option key={p} value={p}>{p} ({getAxis(p).toUpperCase()})</option>
+              ))}
+            </select>
+          </label>
+          {conIndice.length > 0 && (
+            <button
+              onClick={() => setFondoIndice(fondoActivo ? 'ninguno' : 'auto')}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                fondoActivo
+                  ? 'border-gray-300 text-gray-600 hover:bg-gray-100'
+                  : 'border-green-600 bg-green-600 text-white hover:bg-green-700'
+              }`}
+            >
+              {fondoActivo ? 'Ocultar relleno' : 'Mostrar relleno'}
+            </button>
+          )}
+          {fondoActivo && (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+              {CATEGORIAS_INDICE_JALISCO.map(({ nombre, color }, i) => {
+                const cortes = umbralesIndice(fondoActivo)!;
+                const desde = i === 0 ? 0 : cortes[i - 1];
+                const rango = i < cortes.length ? `${desde}–${cortes[i]}` : `>${cortes[i - 1]}`;
+                const etiqueta = i === 1 && fondoActivo in UMBRALES_2026 ? 'Aceptable' : nombre;
+                return (
+                  <span key={nombre} className="flex items-center gap-1">
+                    <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: color }} />
+                    {etiqueta} <span className="text-gray-400">{rango}</span>
+                  </span>
+                );
+              })}
+              <span className="text-gray-400">
+                {getUnitsAndName(fondoActivo).unit} · referencia visual: el índice oficial usa promedios
+                (8 h, 24 h o NowCast), aquí se compara con el dato horario.
               </span>
             </div>
           )}

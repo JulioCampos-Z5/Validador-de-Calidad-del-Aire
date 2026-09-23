@@ -1,8 +1,9 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
-// @ts-ignore — bundle browser-ready sin .d.ts
-import Plotly from 'plotly.js/dist/plotly.js';
+import Plotly from '../graficas/plotly';
 import { CalendarDays } from 'lucide-react';
-import { CONTAMINANTES as CONTAMINANTES_CONST, getUnitsAndName } from '../constants';
+import {
+  CONTAMINANTES as CONTAMINANTES_CONST, getUnitsAndName, UMBRALES, UMBRALES_2026,
+} from '../constants';
 
 interface DataPoint {
   STATION: string;
@@ -16,34 +17,6 @@ interface CalendarHeatmapsProps {
 }
 
 type ModoViz = 'hora' | 'mov8h' | 'mov24h' | 'nowcast';
-
-// Umbrales de referencia anteriores a la NOM-172 (los de Redspira). Siguen
-// aquí porque la norma nueva solo cambió las partículas: para O3, NO2, SO2 y
-// CO estos son los únicos que hay.
-
-const UMBRALES: Record<string, number[]> = {
-  'PM2.5': [25, 45, 79, 147],
-  PM10:   [50, 75, 155, 235],
-  O3:     [0.051, 0.070, 0.092, 0.114],
-  NO2:    [0.107, 0.210, 0.230, 0.250],
-  SO2:    [0.040, 0.075, 0.185, 0.304],
-  CO:     [8.75, 11, 13.3, 15.5],
-};
-
-/**
- * Umbrales de la NOM-172-SEMARNAT-2023, vigentes desde enero de 2026.
- *
- * Se aplican siempre que existen para el parámetro, sin opción de volver a los
- * anteriores: son los que están en vigor, y dejar elegir invitaba a leer un
- * mes de 2026 con la vara de 2025 —y a que dos personas mirando la misma
- * pantalla vieran categorías distintas para el mismo dato.
- *
- * Solo cubren partículas; el resto de contaminantes sigue con `UMBRALES`.
- */
-const UMBRALES_2026: Record<string, number[]> = {
-  'PM2.5': [15, 25, 79, 130],
-  PM10:   [45, 50, 132, 213],
-};
 
 const CATEGORIA_LABELS_ACTUAL = ['Buena', 'Regular', 'Mala', 'Muy Mala', 'Extr. Mala'];
 const CATEGORIA_LABELS_2026   = ['Buena', 'Aceptable', 'Mala', 'Muy Mala', 'Extr. Mala'];
