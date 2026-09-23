@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-// @ts-ignore — el bundle dist es browser-ready pero no tiene declaraciones de tipo propias
-import Plotly from 'plotly.js/dist/plotly.js';
+import Plotly from '../graficas/plotly';
 import { Clock, Info } from 'lucide-react';
 import {
   rejillaHoraria, serieEnRejilla, agregadoZona,
@@ -190,6 +189,7 @@ export default function PerfilHorario({ data }: Props) {
         title: { text: `${cruce}${unidad(cruce) ? ` [${unidad(cruce)}]` : ''}` },
         overlaying: 'y',
         side: 'right',
+        tickmode: 'auto',  // Plotly 4 lo pondría en 'sync' con Y1
         automargin: true,
         zeroline: false,
         showgrid: false,

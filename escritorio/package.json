@@ -6,13 +6,14 @@
   "description": "App de escritorio del Validador de Calidad del Aire",
   "main": "main.mjs",
   "scripts": {
+    "test": "node --test \"pruebas/*.test.mjs\"",
     "dev": "pnpm --filter validador-calidad-aire-frontend build && electron .",
     "backend": "python -m PyInstaller --distpath ../backend/dist --workpath ../backend/build --noconfirm ../backend/validador-backend.spec",
     "exe": "pnpm --filter validador-calidad-aire-frontend build && pnpm backend && electron-builder --win"
   },
   "devDependencies": {
-    "electron": "^33.4.11",
-    "electron-builder": "^25.1.8"
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "gob.jalisco.simaj.validador",
@@ -22,6 +23,7 @@
     },
     "files": [
       "main.mjs",
+      "seguridad.mjs",
       "package.json",
       "icono.png"
     ],

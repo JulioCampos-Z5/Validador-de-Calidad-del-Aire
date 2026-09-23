@@ -12,8 +12,7 @@ import {
   ErrorBar,
   Cell,
 } from 'recharts';
-// @ts-ignore — mismo patrón que LineCharts: usamos Plotly directo (el wrapper react-plotly.js da problemas con plotly.js v3)
-import Plotly from 'plotly.js/dist/plotly.js';
+import Plotly from '../graficas/plotly';
 import {
   CONTAMINANTES as CONTAMINANTES_CONST,
   METEOROLOGICOS as METEOROLOGICOS_CONST,

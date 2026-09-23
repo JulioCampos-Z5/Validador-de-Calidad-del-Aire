@@ -12,3 +12,5 @@ allowBuilds:
   app-builder-bin: true
   7zip-bin: true
   es5-ext: false
+  # Solo sirve para instaladores Squirrel; aquí se usa NSIS.
+  electron-winstaller: false
