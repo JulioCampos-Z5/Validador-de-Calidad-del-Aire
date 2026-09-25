@@ -9,7 +9,7 @@
     "test": "node --test \"pruebas/*.test.mjs\"",
     "dev": "pnpm --filter validador-calidad-aire-frontend build && electron .",
     "backend": "python -m PyInstaller --distpath ../backend/dist --workpath ../backend/build --noconfirm ../backend/validador-backend.spec",
-    "exe": "pnpm --filter validador-calidad-aire-frontend build && pnpm backend && electron-builder --win"
+    "exe": "pnpm --filter validador-calidad-aire-frontend build && pnpm backend && electron-builder --win --publish never"
   },
   "devDependencies": {
     "electron": "^44.4.3",
@@ -24,6 +24,7 @@
     "files": [
       "main.mjs",
       "seguridad.mjs",
+      "bitacora.mjs",
       "package.json",
       "icono.png"
     ],

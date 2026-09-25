@@ -18,12 +18,13 @@
  * código del frontend: la misma compilación sirve para web y para escritorio.
  */
 
-import { app, BrowserWindow, dialog, shell } from 'electron';
+import { app, BrowserWindow, dialog, Menu, MenuItem, shell } from 'electron';
 import { spawn, spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { esWeb } from './seguridad.mjs';
+import { crearBitacora } from './bitacora.mjs';
 
 const aqui = dirname(fileURLToPath(import.meta.url));
 const raiz = join(aqui, '..');
@@ -31,6 +32,17 @@ const PUERTO = 8000;
 const BASE = `http://127.0.0.1:${PUERTO}`;
 
 let backend = null;
+
+// registro.log va en el perfil del usuario, no junto al ejecutable: instalada
+// en Archivos de programa esa carpeta no se puede escribir.
+const bitacora = crearBitacora(join(app.getPath('userData'), 'datos'));
+const verBitacora = `Bitácora:\n${bitacora.ruta}`;
+
+process.on('uncaughtException', (e) => {
+  bitacora.error('Excepción no controlada:', e);
+  dialog.showErrorBox('Error inesperado', `${e.message}\n\n${verBitacora}`);
+});
+process.on('unhandledRejection', (e) => bitacora.error('Promesa rechazada sin atender:', e));
 
 // Ultimo motivo conocido de que el backend no arranque, para poder decirlo en
 // el dialogo en vez de dejar al usuario adivinando.
@@ -80,6 +92,10 @@ function arrancarBackend({ exe, python }) {
     VALIDADOR_HOST: '127.0.0.1',
     VALIDADOR_DEBUG: '0',
     VALIDADOR_SIN_RECARGA: '1',
+    // Por tubería Python escribe en cp1252 y los acentos llegaban rotos a
+    // registro.log, que se lee como UTF-8.
+    PYTHONIOENCODING: 'utf-8',
+    PYTHONUTF8: '1',
   };
 
   backend = exe
@@ -98,17 +114,25 @@ function arrancarBackend({ exe, python }) {
         env: entorno,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
-  backend.stdout.on('data', (d) => process.stdout.write(`[backend] ${d}`));
-  backend.stderr.on('data', (d) => process.stderr.write(`[backend] ${d}`));
+  bitacora.info(`Arrancando backend: ${exe ?? `${python} app.py`}`);
+  const salida = bitacora.flujo('BACKEND');
+  const errores = bitacora.flujo('BACKEND');
+  backend.stdout.on('data', (d) => { process.stdout.write(`[backend] ${d}`); salida(d); });
+  backend.stderr.on('data', (d) => { process.stderr.write(`[backend] ${d}`); errores(d); });
   // Un fallo al lanzar el backend llega como EVENTO, no como excepcion. Sin
   // escucharlo, el proceso moria en silencio y la app se limitaba a decir "no
   // respondio" veinte segundos despues, sin una sola pista de por que.
   backend.on('error', (e) => {
     ultimoError = `No se pudo lanzar el backend: ${e.message}`;
+    bitacora.error(ultimoError);
     process.stderr.write(`[backend] ${ultimoError}` + String.fromCharCode(10));
   });
-  backend.on('exit', (codigo) => {
+  backend.on('exit', (codigo, senal) => {
     if (codigo) ultimoError = `El backend terminó con código ${codigo}.`;
+    // Sin código es que lo detuvo la propia app al cerrar (detenerBackend).
+    bitacora[codigo ? 'error' : 'info'](
+      codigo === null ? `Backend detenido (${senal}).` : `El backend terminó (código ${codigo}).`,
+    );
   });
 }
 
@@ -166,10 +190,35 @@ function crearVentana() {
   return ventana;
 }
 
+/**
+ * Agrega "Ver la bitácora" al menú que Electron pone por omisión, sin
+ * reemplazarlo: así se conservan Recargar, Zoom, etc.
+ */
+function agregarMenuBitacora() {
+  const menu = Menu.getApplicationMenu();
+  if (!menu) return;
+  menu.append(new MenuItem({
+    label: 'Bitácora',
+    submenu: [
+      { label: 'Ver la bitácora', click: () => shell.openPath(bitacora.ruta) },
+      { label: 'Abrir la carpeta de datos', click: () => shell.openPath(dirname(bitacora.ruta)) },
+    ],
+  }));
+  Menu.setApplicationMenu(menu);
+}
+
+/** Muestra el error y lo deja escrito en la bitácora. */
+function fallo(titulo, mensaje) {
+  bitacora.error(`${titulo}: ${mensaje.replace(/\s+/g, ' ')}`);
+  dialog.showErrorBox(titulo, `${mensaje}\n\n${verBitacora}`);
+}
+
 app.whenReady().then(async () => {
+  bitacora.info(`Inicia la app, versión ${app.getVersion()}`);
+  agregarMenuBitacora();
 
   if (!existsSync(join(raiz, 'frontend', 'dist', 'index.html'))) {
-    dialog.showErrorBox(
+    fallo(
       'Falta compilar el frontend',
       'No se encontró frontend/dist.\n\nEjecuta:\n  npm --prefix frontend run build',
     );
@@ -183,7 +232,7 @@ app.whenReady().then(async () => {
 
   if (!exe && !python) {
     // Solo puede pasar en desarrollo: la app instalada trae su propio backend.
-    dialog.showErrorBox(
+    fallo(
       'No se encontró el backend',
       'No está el backend empaquetado (resources/backend-exe) ni hay un ' +
       'intérprete de Python para arrancarlo desde el código.\n\n' +
@@ -198,7 +247,7 @@ app.whenReady().then(async () => {
   arrancarBackend({ exe, python });
 
   if (!await esperarBackend()) {
-    dialog.showErrorBox(
+    fallo(
       'El backend no respondió',
       'El servidor de validación no arrancó en 20 segundos.\n\n' +
       (ultimoError ? ultimoError + '\n\n' : '') +
@@ -212,6 +261,7 @@ app.whenReady().then(async () => {
     return;
   }
 
+  bitacora.info('Backend listo, abriendo la ventana.');
   crearVentana();
 
   app.on('activate', () => {
@@ -235,5 +285,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', detenerBackend);
+app.on('before-quit', () => {
+  bitacora.info('Se cierra la app.');
+  detenerBackend();
+});
 process.on('exit', detenerBackend);
