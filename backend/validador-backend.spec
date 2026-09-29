@@ -10,8 +10,7 @@ un requisito razonable: instalar un intérprete, acertar con la versión y con e
 PATH es más trabajo que la propia herramienta.
 
 Con esto el intérprete y las librerías viajan dentro de la app. No hace falta
-Python, ni internet, ni permisos de administrador, y vale igual para el
-instalador y para el portable.
+Python, ni internet, ni permisos de administrador.
 
 Por qué en carpeta y no en un solo archivo
 ------------------------------------------

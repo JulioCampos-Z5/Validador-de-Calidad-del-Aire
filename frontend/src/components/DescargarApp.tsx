@@ -8,8 +8,8 @@ import { clasesIcono, useMenu } from './menu';
  *
  * Un solo botón: el instalador. Antes había una sección plegable con dos
  * descargas y un párrafo de advertencias, y eso es mucha barra para algo que se
- * pulsa una vez en la vida del equipo. El portable lo sigue sirviendo la API
- * para quien lo necesite; lo que se ofrece aquí es el camino normal.
+ * pulsa una vez en la vida del equipo. Ya no se compila portable: solo hay
+ * instalador.
  *
  * Solo aparece en el navegador. Dentro de la propia app de escritorio se
  * oculta: ofrecerle a alguien descargar el programa que ya está usando es
@@ -34,8 +34,6 @@ export default function DescargarApp() {
     if (enEscritorio()) return;
     apiService.appEscritorio()
       .then((r) => {
-        // El instalador es el camino normal. Si por lo que sea solo se compiló
-        // el portable, se ofrece ese antes que no ofrecer nada.
         const instalador = r.archivos.find((a) => a.nombre.includes('instalador'));
         setArchivo(instalador ?? r.archivos[0] ?? null);
       })

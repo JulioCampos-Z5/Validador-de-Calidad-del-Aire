@@ -50,7 +50,7 @@ fácil, y entonces dejan de ser comparables.
 
 ### Aplicación de escritorio (lo normal para usarla)
 
-Descarga `Validador-instalador.exe` o `Validador-portable.exe` desde el menú
+Descarga `Validador-instalador.exe` desde el menú
 lateral de la web, o compílalos:
 
 ```bash

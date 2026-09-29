@@ -331,16 +331,16 @@ class AppDeEscritorio(ConCliente):
         self.assertEqual(datos['archivos'], [])
 
     def test_se_listan_solo_los_que_existen(self):
-        with open(os.path.join(self.carpeta, 'Validador-portable.exe'), 'wb') as f:
+        with open(os.path.join(self.carpeta, 'Validador-instalador.exe'), 'wb') as f:
             f.write(b'x' * 2048)
 
         datos = self.cliente.get('/api/app-escritorio').get_json()
 
         self.assertTrue(datos['disponible'])
         self.assertEqual([a['nombre'] for a in datos['archivos']],
-                         ['Validador-portable.exe'])
+                         ['Validador-instalador.exe'])
         self.assertEqual(datos['archivos'][0]['url'],
-                         '/api/app-escritorio/Validador-portable.exe')
+                         '/api/app-escritorio/Validador-instalador.exe')
 
     def test_un_nombre_de_fuera_no_se_sirve(self):
         """
@@ -354,7 +354,7 @@ class AppDeEscritorio(ConCliente):
         self.assertEqual(r.status_code, 404)
 
     def test_un_nombre_permitido_pero_sin_compilar(self):
-        r = self.cliente.get('/api/app-escritorio/Validador-portable.exe')
+        r = self.cliente.get('/api/app-escritorio/Validador-instalador.exe')
         self.assertEqual(r.status_code, 404)
         self.assertIn('compilada', r.get_json()['error'])
 

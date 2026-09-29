@@ -117,7 +117,7 @@ Electron, unos 5 minutos:
 npm --prefix escritorio run exe
 ```
 
-> Produce `Validador-instalador.exe` y `Validador-portable.exe`, de unos 97 MB.
+> Produce `Validador-instalador.exe`, de unos 97 MB.
 > No hace falta tener Python para usarlos: va dentro.
 
 ---
@@ -181,14 +181,10 @@ Los ejecutables de Windows **no se generan en el servidor**: PyInstaller no
 compila para otro sistema. Se compilan en Windows y se copian a `salida/`, que
 el contenedor monta.
 
-Copiarlos al servidor (ajusta usuario, servidor y ruta):
+Copiarlo al servidor (ajusta usuario, servidor y ruta):
 
 ```bash
 scp salida/Validador-instalador.exe usuario@servidor:/ruta/al/proyecto/salida/
-```
-
-```bash
-scp salida/Validador-portable.exe usuario@servidor:/ruta/al/proyecto/salida/
 ```
 
 No hace falta reiniciar nada: el backend lee la carpeta en cada consulta. Si
