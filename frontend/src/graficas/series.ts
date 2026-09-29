@@ -138,6 +138,67 @@ export function agregadoZona(
 }
 
 /**
+ * Promedio móvil de `ventana` horas, sobre una serie ya puesta en la rejilla.
+ *
+ * El valor de la hora i es la media de las horas [i - ventana + 1, i], como
+ * lo reportan los índices (el promedio de 8 h de las 14:00 cubre 07:00–14:00).
+ * Se exige el 75 % de la ventana con dato; con menos, esa hora queda en `null`
+ * en vez de dar un promedio que en realidad son dos lecturas sueltas.
+ */
+export function promedioMovil(
+  valores: (number | null)[],
+  ventana: number,
+  suficiencia = 0.75,
+): (number | null)[] {
+  const minimo = Math.ceil(ventana * suficiencia);
+  const salida: (number | null)[] = new Array(valores.length).fill(null);
+  let suma = 0;
+  let cuantas = 0;
+  for (let i = 0; i < valores.length; i++) {
+    const entra = valores[i];
+    if (entra !== null) { suma += entra; cuantas++; }
+    const sale = i - ventana >= 0 ? valores[i - ventana] : null;
+    if (sale !== null) { suma -= sale; cuantas--; }
+    if (i >= ventana - 1 && cuantas >= minimo) salida[i] = suma / cuantas;
+  }
+  return salida;
+}
+
+/**
+ * NowCast de partículas sobre las últimas 12 horas (método de la EPA, el que
+ * retoma la NOM-172 para PM10 y PM2.5).
+ *
+ * El peso w = mín/máx de la ventana, con piso de 0.5, y cada hora hacia atrás
+ * pesa w veces la siguiente. Así, si la concentración cambia rápido, el
+ * NowCast sigue a las horas recientes; si está estable, se parece al promedio.
+ * Requiere dato en al menos dos de las tres horas más recientes.
+ */
+export function nowcast(valores: (number | null)[]): (number | null)[] {
+  return valores.map((_, i) => {
+    const recientes = [valores[i], valores[i - 1], valores[i - 2]]
+      .filter(v => v !== null && v !== undefined).length;
+    if (recientes < 2) return null;
+
+    const ventana: (number | null)[] = [];
+    for (let k = 0; k < 12; k++) ventana.push(i - k >= 0 ? valores[i - k] : null);
+    const datos = ventana.filter((v): v is number => v !== null);
+    const max = Math.max(...datos);
+    const min = Math.min(...datos);
+    const w = max <= 0 ? 1 : Math.max(min / max, 0.5);
+
+    let num = 0;
+    let den = 0;
+    ventana.forEach((v, k) => {
+      if (v === null) return;
+      const peso = w ** k;
+      num += peso * v;
+      den += peso;
+    });
+    return den > 0 ? num / den : null;
+  });
+}
+
+/**
  * Promedio por hora del día (0–23) de una serie ya puesta sobre la rejilla.
  *
  * Devuelve también cuántos valores entraron en cada hora, que es lo que

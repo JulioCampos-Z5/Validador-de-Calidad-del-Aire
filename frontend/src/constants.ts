@@ -103,6 +103,30 @@ export function umbralesIndice(param: string): number[] | undefined {
 }
 
 /**
+ * Cortes de concentración del IMECA (NADF-009-AIRE-2017): el límite superior
+ * de Buena (0–50), Regular (51–100), Mala (101–150) y Muy mala (151–200);
+ * por encima, Extremadamente mala. Mismas unidades que los datos.
+ *
+ * La norma los aplica a O3 y NO2 horarios, CO en promedio móvil de 8 h, SO2 y
+ * partículas en promedio móvil de 24 h.
+ */
+export const UMBRALES_IMECA: Record<string, number[]> = {
+  O3:      [0.070, 0.095, 0.154, 0.204],
+  NO2:     [0.105, 0.210, 0.430, 0.649],
+  SO2:     [0.025, 0.110, 0.207, 0.304],
+  CO:      [5.50, 11.00, 13.00, 15.40],
+  PM10:    [40, 75, 214, 354],
+  'PM2.5': [12, 45, 97.4, 150.4],
+};
+
+export type EscalaIndice = 'aire-salud' | 'imeca';
+
+/** Los cortes de un contaminante en la escala pedida. */
+export function umbralesEscala(param: string, escala: EscalaIndice): number[] | undefined {
+  return escala === 'imeca' ? UMBRALES_IMECA[param] : umbralesIndice(param);
+}
+
+/**
  * Colores y nombres de las categorías tal como los publica Jalisco en
  * aire.jalisco.gob.mx/contaysalud (escala IMECA de su página). Solo se usan las
  * cinco primeras: los umbrales de la NOM-172 tienen cuatro cortes.

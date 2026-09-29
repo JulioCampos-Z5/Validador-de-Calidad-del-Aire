@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import Plotly from '../graficas/plotly';
 import {
-  rejillaHoraria, serieEnRejilla, agregadoZona, type Agregado,
+  rejillaHoraria, serieEnRejilla, agregadoZona, promedioMovil, nowcast, type Agregado,
 } from '../graficas/series';
 import {
   CONTAMINANTES as CONTAMINANTES_CONST,
@@ -9,9 +9,10 @@ import {
   COLORES_ESTACIONES,
   getUnitsAndName,
   getAxisLabel,
-  umbralesIndice,
+  umbralesEscala,
   UMBRALES_2026,
   CATEGORIAS_INDICE_JALISCO,
+  type EscalaIndice,
 } from '../constants';
 
 interface DataPoint {
@@ -44,6 +45,33 @@ const AGREGADOS: { id: Agregado; etiqueta: string; color: string; dash: 'solid' 
   { id: 'promedio', etiqueta: 'Promedio AMG', color: '#111827', dash: 'solid' },
   { id: 'maximo', etiqueta: 'Máximo AMG', color: '#b91c1c', dash: 'dash' },
 ];
+
+// Promedios que usan los índices para cada contaminante. Se dibujan por
+// estación, encima del dato horario, con el color de la estación y un trazo
+// propio para distinguirlos.
+type Variante = 'm8' | 'm24' | 'nowcast';
+const VARIANTES: Record<Variante, {
+  etiqueta: string;
+  dash: string;
+  calcular: (v: (number | null)[]) => (number | null)[];
+}> = {
+  m8: { etiqueta: 'Móvil 8 h', dash: 'longdash', calcular: v => promedioMovil(v, 8) },
+  m24: { etiqueta: 'Móvil 24 h', dash: 'longdash', calcular: v => promedioMovil(v, 24) },
+  nowcast: { etiqueta: 'NowCast', dash: 'dashdot', calcular: nowcast },
+};
+const VARIANTES_POR_PARAM: Record<string, Variante[]> = {
+  CO: ['m8'],
+  PM10: ['m24', 'nowcast'],
+  'PM2.5': ['m24', 'nowcast'],
+};
+
+const ESCALAS: { id: EscalaIndice; etiqueta: string }[] = [
+  { id: 'aire-salud', etiqueta: 'Aire y Salud' },
+  { id: 'imeca', etiqueta: 'IMECA' },
+];
+
+// Rango IMECA de cada categoría, para la leyenda del relleno.
+const RANGOS_IMECA = ['0–50', '51–100', '101–150', '151–200', '>200'];
 
 // Paleta extra para multi-param/multi-station
 function hexToRgba(hex: string, alpha: number) {
@@ -200,6 +228,20 @@ const LineCharts = ({ data }: LineChartsProps) => {
   // 'auto' = el primero con índice, empezando por Y1; 'ninguno' = apagado; o
   // un contaminante concreto elegido a mano.
   const [fondoIndice, setFondoIndice] = useState<string>('auto');
+  // Escala de categorías del relleno.
+  const [escala, setEscala] = useState<EscalaIndice>('aire-salud');
+  // Serie que sigue el relleno: el dato horario o uno de los promedios.
+  const [baseRelleno, setBaseRelleno] = useState<'horario' | Variante>('horario');
+  // Promedios activos, como «param|variante».
+  const [variantes, setVariantes] = useState<Set<string>>(new Set());
+  const tieneVariante = (p: string, v: Variante) => variantes.has(`${p}|${v}`);
+  // Un promedio por parámetro a la vez, elegido de la lista ('' = ninguno).
+  const elegirVariante = (p: string, v: Variante | '') =>
+    setVariantes(prev => {
+      const next = new Set([...prev].filter(clave => !clave.startsWith(`${p}|`)));
+      if (v) next.add(`${p}|${v}`);
+      return next;
+    });
   // Estilo de línea por parámetro (override manual)
   const [lineStyles, setLineStyles] = useState<Record<string, 'solid' | 'dash' | 'dot'>>({});
   // Color de línea por parámetro (override manual)
@@ -214,6 +256,13 @@ const LineCharts = ({ data }: LineChartsProps) => {
   useEffect(() => {
     setSelectedStations(new Set(stations));
   }, [stations]);
+
+  // La disponibilidad de parámetros se cuenta sobre las estaciones marcadas;
+  // con todas o ninguna marcada, sobre la red completa.
+  const porSeleccion = selectedStations.size > 0 && selectedStations.size < stations.length;
+  const baseDisponibilidad = porSeleccion ? stations.filter(s => selectedStations.has(s)) : stations;
+  const disponibleEnSeleccion = (param: string) =>
+    baseDisponibilidad.some(s => disponibles[s]?.has(param));
 
   // Un atajo reemplaza la selección y los ejes; colores y trazos elegidos a
   // mano se conservan.
@@ -305,8 +354,11 @@ const LineCharts = ({ data }: LineChartsProps) => {
       stationsToShow.forEach((station) => {
         series[station] = serieEnRejilla(dataByStation[station] || [], rejilla, param);
       });
+      // Solo las estaciones con al menos un dato del parámetro: una sin datos
+      // no dibuja nada y solo ensuciaba la leyenda.
+      const conDatos = stationsToShow.filter(s => series[s].some(v => v !== null));
 
-      stationsToShow.forEach((station) => {
+      conDatos.forEach((station) => {
         result.push({
           type: 'scatter',
           mode: 'lines',
@@ -324,14 +376,36 @@ const LineCharts = ({ data }: LineChartsProps) => {
         });
       });
 
+      // Promedios de índice (móvil 8 h, 24 h, NowCast) por estación.
+      (VARIANTES_POR_PARAM[param] || []).forEach((v) => {
+        if (!variantes.has(`${param}|${v}`)) return;
+        const { etiqueta, dash, calcular } = VARIANTES[v];
+        conDatos.forEach((station) => {
+          const y = calcular(series[station]);
+          if (!y.some(x => x !== null)) return;
+          result.push({
+            type: 'scatter',
+            mode: 'lines',
+            name: `${station} · ${param} ${etiqueta}`,
+            x: rejilla,
+            y,
+            connectgaps: false,
+            yaxis,
+            line: { color: getStationColor(station), width: 2.5, dash },
+            legendgroup: `${v}_${param}_${station}`,
+            hovertemplate: `${station} ${param} ${etiqueta}=%{y:.4g}<extra></extra>`,
+          });
+        });
+      });
+
       // Banda promedio ± σ de las estaciones marcadas.
-      if (multiStation) {
+      if (conDatos.length > 1) {
         const medias: (number | null)[] = [];
         const inferior: (number | null)[] = [];
         const superior: (number | null)[] = [];
 
         rejilla.forEach((_, i) => {
-          const valores = stationsToShow
+          const valores = conDatos
             .map((s) => series[s][i])
             .filter((v): v is number => v !== null);
           if (valores.length === 0) {
@@ -377,12 +451,14 @@ const LineCharts = ({ data }: LineChartsProps) => {
       // Agregados de toda la zona metropolitana, con las 13 estaciones.
       AGREGADOS.forEach(({ id, etiqueta, color, dash }) => {
         if (!agregados.has(id)) return;
+        const y = agregadoZona(dataByStation, stations, rejilla, param, id);
+        if (!y.some(v => v !== null)) return;
         result.push({
           type: 'scatter',
           mode: 'lines',
           name: `${etiqueta} · ${param}`,
           x: rejilla,
-          y: agregadoZona(dataByStation, stations, rejilla, param, id),
+          y,
           connectgaps: false,
           yaxis,
           line: { color, width: 2.5, dash },
@@ -393,7 +469,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
     });
 
     return result;
-  }, [dataByStation, stations, rejilla, selectedStations, selectedParams, agregados,
+  }, [dataByStation, stations, rejilla, selectedStations, selectedParams, agregados, variantes,
       axisAssignments, lineColors, lineStyles, stationColorOverrides]);
 
   // ── Trazos de alerta: PM2.5 > PM10 ──────────────────────────────────────────
@@ -469,7 +545,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
 
   // Los seleccionados que tienen índice, para ofrecerlos como fondo. Si el
   // elegido se desmarca, el fondo se apaga solo.
-  const conIndice = Array.from(selectedParams).filter(p => umbralesIndice(p));
+  const conIndice = Array.from(selectedParams).filter(p => umbralesEscala(p, escala));
   const orden: Record<Eje, number> = { y1: 0, y2: 1, y3: 2 };
   const fondoAuto = [...conIndice].sort((a, b) => orden[getAxis(a)] - orden[getAxis(b)])[0] ?? null;
   // Un contaminante elegido a mano que luego se desmarca vuelve a automático.
@@ -477,10 +553,20 @@ const LineCharts = ({ data }: LineChartsProps) => {
     : fondoIndice !== 'auto' && selectedParams.has(fondoIndice) ? fondoIndice
     : fondoAuto;
 
+  // Promedios activos del contaminante del relleno: son las otras curvas que
+  // puede seguir. Si el elegido se apaga, vuelve al dato horario.
+  const basesRelleno: Variante[] = fondoActivo
+    ? (VARIANTES_POR_PARAM[fondoActivo] || []).filter(v => tieneVariante(fondoActivo, v))
+    : [];
+  const baseActiva: 'horario' | Variante =
+    baseRelleno !== 'horario' && basesRelleno.includes(baseRelleno) ? baseRelleno : 'horario';
+
   // Relleno bajo la curva con las categorías del índice: cada tramo de área,
   // del color de la categoría en la que cae. Se rellena bajo una sola curva
-  // —la de la estación si hay una, el promedio de lo seleccionado si hay
-  // varias— para no encimar rellenos.
+  // —la envolvente superior: en cada hora, la estación con el valor más
+  // alto— para no encimar rellenos y que el color coincida con la línea que
+  // de verdad alcanza esa categoría. Un promedio la diluiría: una estación
+  // en «Mala» y doce en «Buena» pintaban la hora de verde.
   //
   // Cada categoría es la franja entre min(v, desde) y min(v, hasta). Donde el
   // dato no llega a la categoría los dos bordes valen v y el relleno mide
@@ -491,15 +577,18 @@ const LineCharts = ({ data }: LineChartsProps) => {
   // hora sin dato, une el área con el principio de la gráfica.
   const rellenoIndice = useMemo(() => {
     if (!fondoActivo) return [];
-    const cortes = umbralesIndice(fondoActivo)!;
+    const cortes = umbralesEscala(fondoActivo, escala)!;
     const eje = plotlyAxis(getAxis(fondoActivo));
 
     const estaciones = Array.from(selectedStations);
     if (estaciones.length === 0) return [];
-    const series = estaciones.map(s => serieEnRejilla(dataByStation[s] || [], rejilla, fondoActivo));
+    const series = estaciones.map(s => {
+      const horaria = serieEnRejilla(dataByStation[s] || [], rejilla, fondoActivo);
+      return baseActiva === 'horario' ? horaria : VARIANTES[baseActiva].calcular(horaria);
+    });
     const curva = rejilla.map((_, i) => {
       const valores = series.map(v => v[i]).filter((v): v is number => v !== null);
-      return valores.length ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+      return valores.length ? Math.max(...valores) : null;
     });
 
     // El piso del relleno es el dato más bajo del eje, no el cero: bajar más
@@ -544,7 +633,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
         line: { width: 0 }, hoverinfo: 'skip', showlegend: false,
       }];
     });
-  }, [traces, fondoActivo, axisAssignments, selectedStations, dataByStation, rejilla]);
+  }, [traces, fondoActivo, escala, baseActiva, axisAssignments, selectedStations, dataByStation, rejilla]);
 
   const layout = useMemo(() => {
     const y1Params = Array.from(selectedParams).filter(p => getAxis(p) === 'y1');
@@ -803,8 +892,13 @@ const LineCharts = ({ data }: LineChartsProps) => {
                   </p>
                   <div className="space-y-1">
                     {section.items.map(param => (
-                      <div key={param} className="flex items-center justify-between">
-                        <label className="flex items-center gap-2 cursor-pointer text-sm">
+                      <div key={param}>
+                      <div className="flex items-center justify-between">
+                        <label
+                          className={`flex items-center gap-2 cursor-pointer text-sm transition-opacity ${
+                            disponibleEnSeleccion(param) ? '' : 'opacity-35'
+                          }`}
+                        >
                           <input
                             type="checkbox"
                             checked={selectedParams.has(param)}
@@ -818,16 +912,25 @@ const LineCharts = ({ data }: LineChartsProps) => {
                           <span className="font-medium" style={{ color: getLineColor(param) }}>{param}</span>
                           {getUnitsAndName(param).unit && <span className="text-gray-400 text-xs">({getUnitsAndName(param).unit})</span>}
                           {(() => {
-                            const con = estacionesCon(param);
-                            const sin = stations.filter(s => !con.includes(s));
+                            // Con estaciones marcadas, la cuenta es sobre ellas:
+                            // así se ve qué mide la estación que se eligió.
+                            const base = baseDisponibilidad;
+                            const con = estacionesCon(param).filter(s => base.includes(s));
+                            const sin = base.filter(s => !con.includes(s));
+                            const sufijo = porSeleccion ? 'sel.' : 'est.';
                             return (
                               <span
                                 className={`text-[10px] whitespace-nowrap ${con.length === 0 ? 'text-red-400' : 'text-gray-400'}`}
                                 title={con.length === 0
-                                  ? 'Ninguna estación tiene datos de este parámetro'
+                                  ? porSeleccion
+                                    ? 'Ninguna de las estaciones marcadas mide este parámetro'
+                                    : 'Ninguna estación tiene datos de este parámetro'
                                   : `Con datos: ${con.join(', ')}` + (sin.length ? `\nSin datos: ${sin.join(', ')}` : '')}
                               >
-                                {con.length === 0 ? 'sin datos' : `${con.length}/${stations.length} est.`}
+                                {con.length === 0
+                                  ? porSeleccion ? 'no disponible' : 'sin datos'
+                                  : porSeleccion && base.length === 1 ? 'disponible'
+                                  : `${con.length}/${base.length} ${sufijo}`}
                               </span>
                             );
                           })()}
@@ -891,6 +994,23 @@ const LineCharts = ({ data }: LineChartsProps) => {
                           </div>
                         )}
                       </div>
+                      {selectedParams.has(param) && VARIANTES_POR_PARAM[param] && (
+                        <label className="flex items-center gap-2 ml-6 mt-0.5 text-xs text-gray-500">
+                          Promedio:
+                          <select
+                            value={VARIANTES_POR_PARAM[param].find(v => tieneVariante(param, v)) ?? ''}
+                            onChange={e => elegirVariante(param, e.target.value as Variante | '')}
+                            className="border border-gray-300 rounded px-1.5 py-0.5 text-xs bg-white"
+                            title={`Agrega un promedio de ${param} por estación`}
+                          >
+                            <option value="">Ninguno</option>
+                            {VARIANTES_POR_PARAM[param].map(v => (
+                              <option key={v} value={v}>{VARIANTES[v].etiqueta}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -928,7 +1048,15 @@ const LineCharts = ({ data }: LineChartsProps) => {
         {/* Relleno bajo la curva con el índice Aire y Salud */}
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-gray-700">
-            <span className="font-medium">Relleno índice Aire y Salud:</span>
+            <span className="font-medium">Relleno índice:</span>
+            <select
+              value={escala}
+              onChange={e => setEscala(e.target.value as EscalaIndice)}
+              className="border border-gray-300 rounded-md px-2 py-1 text-sm bg-white"
+              title="Escala de categorías del relleno"
+            >
+              {ESCALAS.map(({ id, etiqueta }) => <option key={id} value={id}>{etiqueta}</option>)}
+            </select>
             <select
               value={fondoIndice !== 'auto' && fondoIndice !== 'ninguno' && !selectedParams.has(fondoIndice) ? 'auto' : fondoIndice}
               onChange={e => setFondoIndice(e.target.value)}
@@ -945,6 +1073,20 @@ const LineCharts = ({ data }: LineChartsProps) => {
               ))}
             </select>
           </label>
+          {fondoActivo && basesRelleno.length > 0 && (
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <span className="font-medium">Sigue:</span>
+              <select
+                value={baseActiva}
+                onChange={e => setBaseRelleno(e.target.value as 'horario' | Variante)}
+                className="border border-gray-300 rounded-md px-2 py-1 text-sm bg-white"
+                title="Qué curva sigue el relleno: el dato horario o uno de los promedios activos"
+              >
+                <option value="horario">Dato horario</option>
+                {basesRelleno.map(v => <option key={v} value={v}>{VARIANTES[v].etiqueta}</option>)}
+              </select>
+            </label>
+          )}
           {conIndice.length > 0 && (
             <button
               onClick={() => setFondoIndice(fondoActivo ? 'ninguno' : 'auto')}
@@ -960,20 +1102,27 @@ const LineCharts = ({ data }: LineChartsProps) => {
           {fondoActivo && (
             <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
               {CATEGORIAS_INDICE_JALISCO.map(({ nombre, color }, i) => {
-                const cortes = umbralesIndice(fondoActivo)!;
+                const cortes = umbralesEscala(fondoActivo, escala)!;
                 const desde = i === 0 ? 0 : cortes[i - 1];
                 const rango = i < cortes.length ? `${desde}–${cortes[i]}` : `>${cortes[i - 1]}`;
-                const etiqueta = i === 1 && fondoActivo in UMBRALES_2026 ? 'Aceptable' : nombre;
+                const etiqueta = escala === 'aire-salud' && i === 1 && fondoActivo in UMBRALES_2026
+                  ? 'Aceptable' : nombre;
                 return (
                   <span key={nombre} className="flex items-center gap-1">
                     <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: color }} />
-                    {etiqueta} <span className="text-gray-400">{rango}</span>
+                    {etiqueta}
+                    {escala === 'imeca' && <span className="text-gray-500">({RANGOS_IMECA[i]})</span>}
+                    <span className="text-gray-400">{rango}</span>
                   </span>
                 );
               })}
               <span className="text-gray-400">
-                {getUnitsAndName(fondoActivo).unit} · referencia visual: el índice oficial usa promedios
-                (8 h, 24 h o NowCast), aquí se compara con el dato horario.
+                {getUnitsAndName(fondoActivo).unit}
+                {escala === 'imeca' ? ' · IMECA según NADF-009-AIRE-2017' : ''}
+                {' · '}sigue a la estación con el valor más alto
+                {baseActiva === 'horario'
+                  ? ' en el dato horario; el índice oficial usa promedios (8 h, 24 h o NowCast), actívalos en Parámetros para compararlos.'
+                  : ` en ${VARIANTES[baseActiva].etiqueta}.`}
               </span>
             </div>
           )}
