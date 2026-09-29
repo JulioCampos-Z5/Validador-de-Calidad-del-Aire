@@ -92,6 +92,10 @@ function arrancarBackend({ exe, python }) {
     VALIDADOR_HOST: '127.0.0.1',
     VALIDADOR_DEBUG: '0',
     VALIDADOR_SIN_RECARGA: '1',
+    // Histórico en SQLite para comparar años: solo existe en el escritorio, y
+    // va en la misma carpeta de datos que la bitácora («Abrir la carpeta de
+    // datos» en el menú lleva ahí). Ver backend/historico/.
+    VALIDADOR_HISTORICO: join(app.getPath('userData'), 'datos', 'historico.sqlite'),
     // Por tubería Python escribe en cp1252 y los acentos llegaban rotos a
     // registro.log, que se lee como UTF-8.
     PYTHONIOENCODING: 'utf-8',

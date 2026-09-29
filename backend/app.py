@@ -99,6 +99,13 @@ app.register_blueprint(bp_minutales)
 from emisiones.rutas import bp as bp_emisiones
 app.register_blueprint(bp_emisiones)
 
+# Histórico en SQLite para comparar años. Solo se activa en la app de
+# escritorio, que pasa la ruta en VALIDADOR_HISTORICO (ver historico/).
+from historico.rutas import bp as bp_historico, guardar_importado
+app.register_blueprint(bp_historico)
+
+import ultimo
+
 # Configuración
 # Carpeta de trabajo para archivos subidos y Excel generados.
 #
@@ -1160,10 +1167,6 @@ APP_ESCRITORIO = {
         'etiqueta': 'Instalador',
         'detalle': 'Instala la app y crea acceso directo. Recomendado.',
     },
-    'Validador-portable.exe': {
-        'etiqueta': 'Portable',
-        'detalle': 'Un solo archivo, no instala nada. Para USB o equipos sin permisos.',
-    },
 }
 
 
@@ -1339,6 +1342,10 @@ def validate_full():
         else:
             df_validado = validar_datos_completo(df_convertido, config_validacion)
         
+        ultimo.guardar_validado(df_validado, 'archivo', filename)
+        # App de escritorio: lo importado queda también en la base local.
+        historico = guardar_importado(df_validado, filename)
+
         # 4. Crear resúmenes
         resumen_banderas, resumen_detallado, estadisticas, stats_detalladas = crear_resumen_validacion(df_validado)
         
@@ -1371,7 +1378,8 @@ def validate_full():
                 'estadisticas': estadisticas.to_dict() if not estadisticas.empty else {}
             },
             'data_preview': df_json,
-            'estadisticas_detalladas': stats_detalladas.to_dict(orient='records') if not stats_detalladas.empty else []
+            'estadisticas_detalladas': stats_detalladas.to_dict(orient='records') if not stats_detalladas.empty else [],
+            'historico': historico,
         }
         
         return jsonify(response)
@@ -1424,6 +1432,8 @@ def preview_validated():
         if df is None or len(df) == 0:
             return jsonify({'error': f'No se encontraron datos en la hoja {hoja}'}), 400
 
+        ultimo.guardar_validado(df, 'archivo', filename)
+        historico = guardar_importado(df, filename)
         resumen_banderas, _, estadisticas, stats_detalladas = crear_resumen_validacion(df)
 
         df_json = df.fillna('').to_dict(orient='records')
@@ -1441,7 +1451,8 @@ def preview_validated():
                 'estadisticas': estadisticas.to_dict() if not estadisticas.empty else {}
             },
             'data_preview': df_json,
-            'estadisticas_detalladas': stats_detalladas.to_dict(orient='records') if not stats_detalladas.empty else []
+            'estadisticas_detalladas': stats_detalladas.to_dict(orient='records') if not stats_detalladas.empty else [],
+            'historico': historico,
         })
 
     except Exception as e:

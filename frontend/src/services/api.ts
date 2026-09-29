@@ -51,7 +51,15 @@ export interface EstadisticaDetallada {
   'Desviación estándar': number;
 }
 
+/** Lo que se guardó en la base local al importar (solo app de escritorio). */
+export interface GuardadoLocal {
+  nuevos?: number;
+  pendientes?: number;
+  error?: string;
+}
+
 export interface ValidationResponse {
+  historico?: GuardadoLocal | null;
   success: boolean;
   message: string;
   output_filename: string;

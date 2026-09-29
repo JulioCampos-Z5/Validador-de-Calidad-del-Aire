@@ -21,6 +21,7 @@ const ORIGENES: Record<string, string> = {
   validado: 'archivo ya validado',
   simaj: 'descarga del SIMAJ',
   emisiones: 'API de Emisiones',
+  historico: 'base local',
 };
 
 /**

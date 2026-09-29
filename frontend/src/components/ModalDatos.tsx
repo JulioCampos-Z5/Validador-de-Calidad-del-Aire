@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   DownloadCloud, X, ChevronLeft, UploadCloud, RefreshCw, Search,
-  CalendarDays, AlertCircle,
+  CalendarDays, AlertCircle, Database,
 } from 'lucide-react';
 import {
   diasDelPeriodo, useDatos, type Origen, type OrigenArchivo,
@@ -10,6 +10,7 @@ import {
 import { DIAS_AVISO, DIAS_MAXIMOS } from '../services/emisiones';
 import { PanelCalendario } from './CalendarioRango';
 import AccesoEmisiones from './AccesoEmisiones';
+import { FECHA_MINIMA, historicoApi, type AnioGuardado } from '../services/historico';
 
 /**
  * Asistente para traer datos, en pasos.
@@ -41,8 +42,15 @@ interface Props {
 export default function ModalDatos({ origen, onCerrar }: Props) {
   const {
     periodo, setPeriodo, sesionEmisiones, cargando, error,
-    cargarArchivo, cargarSimaj, cargarEmisiones, progresoSimaj,
+    cargarArchivo, cargarSimaj, cargarEmisiones, cargarHistorico, progresoSimaj,
   } = useDatos();
+
+  // De la base local conviene saber qué hay antes de elegir fechas.
+  const [guardados, setGuardados] = useState<AnioGuardado[] | null>(null);
+  useEffect(() => {
+    if (origen !== 'historico') return;
+    historicoApi.estado().then(e => setGuardados(e.anios ?? [])).catch(() => setGuardados([]));
+  }, [origen]);
 
   /**
    * Por dónde empieza cada origen. Un archivo se pide y ya; la API necesita
@@ -81,6 +89,7 @@ export default function ModalDatos({ origen, onCerrar }: Props) {
     const elegido = rango ?? periodo;
     if (rango) setPeriodo(rango);
     if (origen === 'simaj') await cargarSimaj(elegido);
+    else if (origen === 'historico') await cargarHistorico(elegido);
     else await cargarEmisiones(elegido);
     onCerrar();
   };
@@ -104,7 +113,8 @@ export default function ModalDatos({ origen, onCerrar }: Props) {
     archivo: 'Elegir el archivo',
     acceso: 'Entrar en la API de Emisiones',
     periodo: 'Elegir el periodo',
-    confirmar: origen === 'simaj' ? 'Descargar del SIMAJ' : 'Consultar la API',
+    confirmar: origen === 'simaj' ? 'Descargar del SIMAJ'
+      : origen === 'historico' ? 'Cargar de la base local' : 'Consultar la API',
   };
 
   const pct = progresoSimaj && progresoSimaj.total > 0
@@ -118,7 +128,8 @@ export default function ModalDatos({ origen, onCerrar }: Props) {
       role="presentation"
     >
       <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-md"
+        // El calendario son dos meses lado a lado: necesita el ancho.
+        className={`bg-white rounded-xl shadow-xl w-full ${paso === 'periodo' ? 'max-w-3xl' : 'max-w-md'}`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -213,6 +224,13 @@ export default function ModalDatos({ origen, onCerrar }: Props) {
         {/* ── Periodo ── */}
         {paso === 'periodo' && (
           <>
+            {origen === 'historico' && guardados && (
+              <p className="px-4 pt-3 text-xs text-slate-500 leading-snug">
+                {guardados.length === 0
+                  ? 'La base local está vacía: carga datos de otro origen y usa «Guardar en base local».'
+                  : <>Guardado: {guardados.map(a => `${a.anio} (${a.desde.slice(5)} a ${a.hasta.slice(5)})`).join(' · ')}</>}
+              </p>
+            )}
             <PanelCalendario
               desde={periodo.desde}
               hasta={periodo.hasta}
@@ -252,6 +270,11 @@ export default function ModalDatos({ origen, onCerrar }: Props) {
               <p className="text-xs text-amber-700 leading-snug">
                 Esta API no acepta más de {DIAS_MAXIMOS} días por consulta.
                 Vuelve atrás y acorta el periodo.
+              </p>
+            )}
+            {origen === 'historico' && (rango ?? periodo).desde < FECHA_MINIMA && (
+              <p className="text-xs text-amber-700 leading-snug">
+                La base local cubre desde {FECHA_MINIMA}; lo anterior no se incluye.
               </p>
             )}
             {largo && (
@@ -294,10 +317,11 @@ export default function ModalDatos({ origen, onCerrar }: Props) {
             >
               {cargando
                 ? <RefreshCw size={15} className="animate-spin" />
-                : origen === 'simaj' ? <DownloadCloud size={15} /> : <Search size={15} />}
+                : origen === 'simaj' ? <DownloadCloud size={15} />
+                  : origen === 'historico' ? <Database size={15} /> : <Search size={15} />}
               {cargando
                 ? 'Trayendo los datos…'
-                : origen === 'simaj' ? 'Descargar' : 'Consultar'}
+                : origen === 'simaj' ? 'Descargar' : origen === 'historico' ? 'Cargar' : 'Consultar'}
             </button>
           </div>
         )}

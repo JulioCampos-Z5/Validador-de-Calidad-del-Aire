@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   RefreshCw, X, ChevronDown, FileDown, Table2,
-  Upload, FileInput, DownloadCloud, Radio, FolderKanban,
+  Upload, FileInput, DownloadCloud, Radio, FolderKanban, Database, HardDriveDownload,
 } from 'lucide-react';
 import { useDatos, type Origen } from '../estado/DatosContexto';
 import apiService from '../services/api';
 import { minutalesApi } from '../services/minutales';
 import SelectorPeriodo from './SelectorPeriodo';
 import ModalDatos from './ModalDatos';
+import ModalBaseLocal from './ModalBaseLocal';
 import { clasesIcono, useMenu } from './menu';
 
 /**
@@ -55,14 +56,23 @@ const ORIGENES: {
     detalle: 'emisiones.jalisco.gob.mx. Requiere iniciar sesión.',
     icono: Radio,
   },
+  {
+    id: 'historico',
+    etiqueta: 'Base local (SQLite)',
+    detalle: 'Lo guardado en esta computadora. Solo en la app de escritorio.',
+    icono: Database,
+  },
 ];
 
 
 export default function OrigenDatos() {
   const {
     cargando, descripcion, error, limpiar, resultado, mir, contaminantesMir, comoCeroMir,
-    progresoSimaj,
+    progresoSimaj, historicoDisponible,
   } = useDatos();
+  // La base local solo aparece en la app de escritorio.
+  const origenes = ORIGENES.filter(o => o.id !== 'historico' || historicoDisponible);
+  const [guardarLocal, setGuardarLocal] = useState(false);
   const { plegado, desplegar } = useMenu();
 
   const [lista, setLista] = useState(false);
@@ -94,7 +104,12 @@ export default function OrigenDatos() {
     ? Math.round((progresoSimaj.hechos / progresoSimaj.total) * 100)
     : 0;
 
-  const dialogo = modal ? <ModalDatos origen={modal} onCerrar={() => setModal(null)} /> : null;
+  const dialogo = (
+    <>
+      {modal && <ModalDatos origen={modal} onCerrar={() => setModal(null)} />}
+      {guardarLocal && <ModalBaseLocal onCerrar={() => setGuardarLocal(false)} />}
+    </>
+  );
 
   const exportaciones = resultado && !cargando ? (
     <>
@@ -129,7 +144,25 @@ export default function OrigenDatos() {
           {!plegado && <span className="text-sm font-medium">Exportar reporte MIR</span>}
         </a>
       )}
+
     </>
+  ) : null;
+
+  // Base local: descargar desde la API, revisar cambios y guardar lo cargado.
+  // Solo en la app de escritorio, haya o no datos cargados.
+  const baseLocal = historicoDisponible && !cargando ? (
+    <button
+      type="button"
+      onClick={() => setGuardarLocal(true)}
+      title="Base local: descargar desde la API, revisar cambios y guardar lo cargado."
+      aria-label="Base local"
+      className={plegado
+        ? clasesIcono()
+        : 'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 hover:bg-slate-100 transition-colors'}
+    >
+      <HardDriveDownload size={plegado ? 20 : 17} className="shrink-0" />
+      {!plegado && <span className="text-sm font-medium">Base local</span>}
+    </button>
   ) : null;
 
   if (plegado) {
@@ -154,6 +187,7 @@ export default function OrigenDatos() {
         <SelectorPeriodo />
 
         {exportaciones}
+        {baseLocal}
 
         {descripcion && !cargando && (
           <span
@@ -192,7 +226,7 @@ export default function OrigenDatos() {
 
           {lista && !cargando && (
             <div role="menu" className="mt-1 rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
-              {ORIGENES.map(({ id, etiqueta, detalle, icono: Icono }) => (
+              {origenes.map(({ id, etiqueta, detalle, icono: Icono }) => (
                 <button
                   key={id}
                   type="button"
@@ -237,9 +271,24 @@ export default function OrigenDatos() {
         {descripcion && !cargando && (
           <div className="mt-2 px-2.5 py-2 rounded-md bg-green-50 border border-green-200">
             <div className="flex items-start justify-between gap-2">
-              <p className="text-[11px] text-green-800 leading-snug break-words min-w-0">
-                Cargado: {descripcion}
-              </p>
+              <div className="min-w-0">
+                <p className="text-[11px] text-green-800 leading-snug break-words">
+                  Cargado: {descripcion}
+                </p>
+                {/* Solo en la app de escritorio: lo importado ya quedó en la
+                    base local. */}
+                {resultado?.historico && (
+                  <p className={`text-[11px] leading-snug mt-0.5 ${
+                    resultado.historico.error ? 'text-red-700' : 'text-green-700'
+                  }`}>
+                    {resultado.historico.error
+                      ?? `Guardado en base local: ${(resultado.historico.nuevos ?? 0).toLocaleString()} nuevos`
+                        + (resultado.historico.pendientes
+                          ? ` · ${resultado.historico.pendientes.toLocaleString()} cambios pendientes (revísalos en Base local)`
+                          : '')}
+                  </p>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={limpiar}
@@ -261,6 +310,7 @@ export default function OrigenDatos() {
       )}
 
       {exportaciones}
+      {baseLocal}
       </div>
 
       {dialogo}

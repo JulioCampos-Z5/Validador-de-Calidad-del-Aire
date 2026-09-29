@@ -299,6 +299,7 @@ def descargar():
     except Exception as e:
         registros.anotar_error('Emisiones: falló la validación de lo consultado', e)
         return jsonify({'error': f'Error durante la validación: {e}'}), 500
+    ultimo.guardar_validado(df_validado, 'emisiones', 'API de Emisiones')
 
     anio = pd.to_datetime(df_validado['DATE'], errors='coerce').dt.year.mode()
     anio = int(anio.iloc[0]) if not anio.empty else horario.ahora().year

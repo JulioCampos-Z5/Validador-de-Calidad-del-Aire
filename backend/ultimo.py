@@ -47,3 +47,20 @@ def olvidar() -> None:
     """Descarta lo guardado. Existe sobre todo para que las pruebas no se contaminen."""
     with _candado:
         _estado.update({'df': None, 'origen': None})
+        _validado.update({'df': None, 'origen': None, 'descripcion': None})
+
+
+# El conjunto YA VALIDADO que se está mirando, venga de donde venga (archivo,
+# SIMAJ o Emisiones). Es lo que se guarda en el histórico de la app de
+# escritorio: se compara lo mismo que se ve en pantalla, con sus banderas.
+_validado: dict = {'df': None, 'origen': None, 'descripcion': None}
+
+
+def guardar_validado(df: pd.DataFrame, origen: str, descripcion: str | None = None) -> None:
+    with _candado:
+        _validado.update({'df': df, 'origen': origen, 'descripcion': descripcion})
+
+
+def validado() -> tuple[pd.DataFrame | None, str | None, str | None]:
+    """(filas validadas, origen, descripción) del último conjunto cargado."""
+    return _validado['df'], _validado['origen'], _validado['descripcion']

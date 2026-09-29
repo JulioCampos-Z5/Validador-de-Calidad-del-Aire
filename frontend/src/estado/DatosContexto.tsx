@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState,
 import apiService, { type ValidationResponse } from '../services/api';
 import { minutalesApi, CONTAMINANTES_CRITERIO, type Mir, type Falla, type Progreso } from '../services/minutales';
 import { emisionesApi, type SesionEmisiones } from '../services/emisiones';
+import { historicoApi } from '../services/historico';
 
 /**
  * Estado compartido del conjunto de datos cargado.
@@ -16,7 +17,7 @@ import { emisionesApi, type SesionEmisiones } from '../services/emisiones';
  * se elige una vez —desde el menú— y todas las páginas leen lo mismo.
  */
 
-export type Origen = 'envista' | 'validado' | 'simaj' | 'emisiones';
+export type Origen = 'envista' | 'validado' | 'simaj' | 'emisiones' | 'historico';
 
 /** Los origenes que entran por un archivo del disco; los otros dos son de red. */
 export type OrigenArchivo = Extract<Origen, 'envista' | 'validado'>;
@@ -109,6 +110,10 @@ interface Estado {
   // haria con las anteriores. Ver la nota en `cargarSimaj`.
   cargarSimaj: (rango?: Periodo) => Promise<void>;
   cargarEmisiones: (rango?: Periodo) => Promise<void>;
+  /** Periodo guardado en la base local (solo app de escritorio). */
+  cargarHistorico: (rango?: Periodo) => Promise<void>;
+  /** Si hay base local: solo en la app de escritorio. */
+  historicoDisponible: boolean;
   entrarEmisiones: (email: string, password: string, recordar?: boolean) => Promise<void>;
   salirEmisiones: () => Promise<void>;
   cambiarContaminantesMir: (c: string[]) => Promise<void>;
@@ -207,6 +212,12 @@ export function DatosProvider({ children }: { children: ReactNode }) {
   // que al arrancar hay que preguntar si sigue vivo: si no, la interfaz
   // mostraria el formulario de acceso con una sesion perfectamente valida
   // abierta al otro lado.
+  // La base local solo existe en la app de escritorio; el backend lo dice.
+  const [historicoDisponible, setHistoricoDisponible] = useState(false);
+  useEffect(() => {
+    historicoApi.estado().then(e => setHistoricoDisponible(e.disponible)).catch(() => {});
+  }, []);
+
   useEffect(() => {
     emisionesApi.sesion().then(setSesionEmisiones).catch(() => {
       // Backend aun levantando; el estado por defecto (sin sesion) ya sirve.
@@ -262,7 +273,13 @@ export function DatosProvider({ children }: { children: ReactNode }) {
       setFallas([]);
       setOrigen(modo);
       setDescripcion(archivo.name);
-      setExito(`${r.summary.total_registros.toLocaleString()} registros de ${archivo.name}.`);
+      // En la app de escritorio lo importado se guarda solo en la base local.
+      const local = r.historico;
+      const guardado = !local ? ''
+        : local.error ? ` ${local.error}`
+          : ` Base local: ${(local.nuevos ?? 0).toLocaleString()} datos nuevos` +
+            (local.pendientes ? `, ${local.pendientes.toLocaleString()} cambios pendientes de revisar` : '') + '.';
+      setExito(`${r.summary.total_registros.toLocaleString()} registros de ${archivo.name}.${guardado}`);
     } catch (e) {
       const detalle = (e as { response?: { data?: { error?: string } } }).response?.data?.error;
       setError(detalle ?? 'Error al procesar el archivo.');
@@ -378,6 +395,34 @@ export function DatosProvider({ children }: { children: ReactNode }) {
     }
   }, [configBackend, periodo]);
 
+  /** Lo mismo que en `cargarSimaj`: el rango elegido manda sobre el estado. */
+  const cargarHistorico = useCallback(async (rango?: Periodo) => {
+    setCargando(true);
+    setError(null);
+    setAdvertencia(null);
+    setExito(null);
+    try {
+      const consultable = rangoConsultable(rango ?? periodo);
+      const r = await historicoApi.cargar(consultable.desde, consultable.hasta);
+      setResultado(r);
+      // Lo guardado no dice qué horas debería haber: sin MIR, como un archivo.
+      setMir(null);
+      setFallas([]);
+      setComoCeroMir([]);
+      setOrigen('historico');
+      setDescripcion(`Base local · ${r.summary.fecha_inicio} a ${r.summary.fecha_fin}`);
+      setExito(
+        `${r.summary.total_registros.toLocaleString()} registros de la base local ` +
+        `(${r.summary.estaciones} estaciones).`,
+      );
+    } catch (e) {
+      const detalle = (e as { response?: { data?: { error?: string } } }).response?.data?.error;
+      setError(detalle ?? 'No se pudo leer la base local.');
+    } finally {
+      setCargando(false);
+    }
+  }, [periodo]);
+
   const cambiarContaminantesMir = useCallback(async (nuevos: string[]) => {
     setContaminantesMir(nuevos);
     try {
@@ -416,14 +461,14 @@ export function DatosProvider({ children }: { children: ReactNode }) {
     cargando, error, exito, revalidar, config, sesionEmisiones, periodo,
     progresoSimaj,
     setConfig, setRevalidar, setError, setPeriodo,
-    cargarArchivo, cargarSimaj, cargarEmisiones,
+    cargarArchivo, cargarSimaj, cargarEmisiones, cargarHistorico, historicoDisponible,
     entrarEmisiones, salirEmisiones, cambiarContaminantesMir, comoCeroMir, alternarCeroMir, limpiar,
     advertencia, descartarAdvertencia, reintentarDescarga,
   }), [
     resultado, mir, fallas, contaminantesMir, origen, descripcion,
     cargando, error, exito, revalidar, config, sesionEmisiones, periodo,
     progresoSimaj,
-    cargarArchivo, cargarSimaj, cargarEmisiones,
+    cargarArchivo, cargarSimaj, cargarEmisiones, cargarHistorico, historicoDisponible,
     entrarEmisiones, salirEmisiones, cambiarContaminantesMir, comoCeroMir, alternarCeroMir, limpiar,
     advertencia, descartarAdvertencia, reintentarDescarga,
   ]);

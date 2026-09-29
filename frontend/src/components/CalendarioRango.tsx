@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 /**
- * Calendario para elegir un rango: primero una fecha, después la otra.
+ * Calendario para elegir un rango: dos meses lado a lado, uno por fecha.
  *
  * Sustituye a dos `<input type="date">`. Aquellos delegaban en el selector del
  * navegador, que cambia de aspecto en cada uno y obliga a abrir dos veces para
@@ -75,241 +75,206 @@ interface PropsPanel {
   onRango: (rango: { desde: string; hasta: string } | null) => void;
 }
 
+interface PropsMes {
+  titulo: string;
+  valor: Date | null;
+  mes: Date;
+  setMes: (m: Date) => void;
+  /** Días que no se pueden elegir en este calendario. */
+  bloqueado: (dia: Date) => boolean;
+  onElegir: (dia: Date) => void;
+  onEscribir: (texto: string) => void;
+  min?: string;
+  max: string;
+  inicio: Date | null;
+  fin: Date | null;
+}
+
+/** Un mes con su casilla de fecha encima: una de las dos mitades del panel. */
+function Mes({ titulo, valor, mes, setMes, bloqueado, onElegir, onEscribir, min, max, inicio, fin }: PropsMes) {
+  return (
+    <div className="flex-1 min-w-[16rem]">
+      <label className="block rounded-md border border-slate-300 bg-white px-3 py-2 mb-3">
+        <span className="block text-xs font-medium text-slate-500">{titulo}</span>
+        <input
+          type="date"
+          value={valor ? aTexto(valor) : ''}
+          min={min}
+          max={max}
+          onChange={(e) => onEscribir(e.target.value)}
+          className="w-full bg-transparent text-base text-slate-800 tabular-nums focus:outline-none"
+        />
+      </label>
+
+      <div className="flex items-center justify-between mb-2">
+        <button
+          type="button"
+          onClick={() => setMes(new Date(mes.getFullYear(), mes.getMonth() - 1, 1))}
+          aria-label={`${titulo}: mes anterior`}
+          className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <span className="text-sm font-semibold text-slate-700">
+          {MESES[mes.getMonth()]} {mes.getFullYear()}
+        </span>
+        <button
+          type="button"
+          onClick={() => setMes(new Date(mes.getFullYear(), mes.getMonth() + 1, 1))}
+          aria-label={`${titulo}: mes siguiente`}
+          className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100"
+        >
+          <ChevronRight size={18} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {DIAS.map((d, i) => (
+          <span key={i} className="text-center text-xs font-medium text-slate-400 py-1">{d}</span>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-1">
+        {celdasDelMes(mes).map((dia, i) => {
+          if (!dia) return <span key={i} />;
+          const fuera = bloqueado(dia);
+          const esInicio = inicio && mismoDia(dia, inicio);
+          const esFin = fin && mismoDia(dia, fin);
+          const enMedio = inicio && fin && dia > inicio && dia < fin;
+
+          let clases = 'text-slate-700 hover:bg-slate-100';
+          if (fuera) clases = 'text-slate-300 cursor-not-allowed';
+          else if (esInicio || esFin) clases = 'bg-primary-600 text-white font-semibold';
+          else if (enMedio) clases = 'bg-primary-50 text-primary-700';
+
+          return (
+            <button
+              key={i}
+              type="button"
+              disabled={fuera}
+              onClick={() => onElegir(dia)}
+              className={`h-10 rounded-md text-sm transition-colors ${clases}`}
+            >
+              {dia.getDate()}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /**
- * El calendario en sí, sin envoltorio.
+ * El calendario en sí, sin envoltorio: dos meses lado a lado, el de la
+ * izquierda para la fecha de inicio y el de la derecha para la de fin, cada
+ * uno con su propia navegación. Así las dos fechas se eligen por separado y a
+ * la vista, aunque estén a años de distancia.
  *
- * Se separa del diálogo porque se usa en dos sitios con pies distintos: como
- * modal suelto desde el menú (Cancelar / Aceptar) y como un paso del asistente
- * de datos (Atrás / Siguiente). Duplicarlo habría significado mantener dos
- * calendarios que se van pareciendo cada vez menos.
+ * Se usa en dos sitios con pies distintos: como modal suelto desde el menú
+ * (Cancelar / Aceptar) y como un paso del asistente de datos (Siguiente).
  */
 export function PanelCalendario({ desde, hasta, onRango }: PropsPanel) {
   const [inicio, setInicio] = useState<Date | null>(aFecha(desde));
   const [fin, setFin] = useState<Date | null>(aFecha(hasta));
-  const [mes, setMes] = useState(() => aFecha(desde));
-  const [encima, setEncima] = useState<Date | null>(null);
-  /**
-   * Cuál de los dos extremos se está poniendo.
-   *
-   * Antes lo decidía el estado del rango —si había fin, el siguiente clic
-   * empezaba de cero—, y para corregir solo el día final había que volver a
-   * marcar los dos. Ahora se dice cuál se toca, se toca, y el turno pasa al
-   * otro; también se puede pulsar la casilla de arriba para volver a uno.
-   */
-  const [activo, setActivo] = useState<'inicio' | 'fin'>('inicio');
+  const [mesInicio, setMesInicio] = useState(() => aFecha(desde));
+  const [mesFin, setMesFin] = useState(() => aFecha(hasta));
 
   const hoy = useMemo(() => new Date(), []);
 
   /**
    * Un atajo deja el rango elegido, no lo aplica: sigue haciendo falta aceptar.
-   * Así se ve en el calendario qué se acaba de seleccionar antes de confirmar,
-   * y un clic de más no cambia el periodo sin querer.
    */
   const atajo = (dias: number) => {
-    const fin = new Date();
+    const f = new Date();
     const ini = new Date();
     ini.setDate(ini.getDate() - (dias - 1));
     setInicio(ini);
-    setFin(fin);
-    setActivo('inicio');
-    setMes(new Date(ini.getFullYear(), ini.getMonth(), 1));
+    setFin(f);
+    setMesInicio(new Date(ini.getFullYear(), ini.getMonth(), 1));
+    setMesFin(new Date(f.getFullYear(), f.getMonth(), 1));
   };
 
-  /** Una fecha escrita en las casillas de arriba. */
-  const escribir = (extremo: 'inicio' | 'fin', texto: string) => {
-    if (!texto) return;
-    const dia = aFecha(texto);
+  const ponerInicio = (dia: Date) => {
     if (Number.isNaN(dia.getTime()) || dia > hoy) return;
-
-    if (extremo === 'inicio') {
-      setInicio(dia);
-      // Un inicio posterior al fin dejaría un rango imposible; se borra el fin
-      // en vez de reordenarlos por cuenta propia.
-      if (fin && dia > fin) setFin(null);
-      setActivo('fin');
-    } else {
-      if (inicio && dia < inicio) return;
-      setFin(dia);
-      setActivo('inicio');
-    }
-    setMes(new Date(dia.getFullYear(), dia.getMonth(), 1));
+    setInicio(dia);
+    // Un inicio posterior al fin dejaría un rango imposible: el fin se borra.
+    if (fin && dia > fin) setFin(null);
+    setMesInicio(new Date(dia.getFullYear(), dia.getMonth(), 1));
   };
 
-  /**
-   * Pone el extremo que toque y pasa el turno al otro.
-   *
-   * Si el día cae antes del inicio no se rechaza —eso obligaría a adivinar el
-   * orden—, se toma como nuevo inicio.
-   */
-  const elegir = (dia: Date) => {
-    if (dia > hoy) return;
-
-    if (activo === 'inicio') {
-      setInicio(dia);
-      if (fin && dia > fin) setFin(null);
-      setActivo('fin');
-      return;
-    }
-
-    if (inicio && dia < inicio) {
-      setInicio(dia);
-      return;
-    }
+  const ponerFin = (dia: Date) => {
+    if (Number.isNaN(dia.getTime()) || dia > hoy || (inicio && dia < inicio)) return;
     setFin(dia);
-    setActivo('inicio');
+    setMesFin(new Date(dia.getFullYear(), dia.getMonth(), 1));
   };
-
-  // Mientras falta el segundo clic, el rango se previsualiza con el ratón.
-  const finVisible = activo === 'fin' && inicio && encima && encima >= inicio
-    ? encima
-    : fin;
-
-  const dentro = (dia: Date) =>
-    inicio && finVisible && dia > inicio && dia < finVisible;
 
   const dias = inicio && fin
     ? Math.round((fin.getTime() - inicio.getTime()) / 86_400_000) + 1
     : null;
 
-  // Se avisa al padre en cuanto el rango queda completo, y con null mientras
-  // falte la segunda fecha, para que pueda apagar su botón de continuar.
+  // Se avisa al padre con el rango completo, o con null si falta una fecha.
   useEffect(() => {
     onRango(inicio && fin ? { desde: aTexto(inicio), hasta: aTexto(fin) } : null);
   }, [inicio, fin, onRango]);
 
   return (
     <>
-        <div className="px-4 py-3">
-          <div className="flex flex-wrap gap-1 mb-3">
-            {ATAJOS.map(({ etiqueta, dias: d }) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => atajo(d)}
-                className="flex-1 min-w-[3.5rem] px-2 py-1.5 rounded-md text-xs font-medium border border-slate-300 text-slate-600 bg-white hover:bg-slate-100 transition-colors"
-              >
-                {etiqueta}
-              </button>
-            ))}
-          </div>
-
-          {/* Las dos fechas, cada una en lo suyo: se escriben aquí o se pulsan
-              en el calendario. La casilla resaltada es la que se está poniendo,
-              y pulsarla devuelve el turno a ese extremo — así se corrige solo
-              el fin sin tener que volver a marcar los dos. */}
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            {([
-              { extremo: 'inicio' as const, etiqueta: 'Desde', valor: inicio },
-              { extremo: 'fin' as const, etiqueta: 'Hasta', valor: fin },
-            ]).map(({ extremo, etiqueta, valor }) => (
-              <label
-                key={extremo}
-                className={`block rounded-md border px-2 py-1.5 cursor-pointer transition-colors ${
-                  activo === extremo
-                    ? 'border-primary-500 bg-primary-50'
-                    : 'border-slate-300 bg-white hover:bg-slate-50'
-                }`}
-                onClick={() => setActivo(extremo)}
-              >
-                <span className={`block text-[11px] font-medium ${
-                  activo === extremo ? 'text-primary-700' : 'text-slate-500'
-                }`}>
-                  {etiqueta}
-                </span>
-                <input
-                  type="date"
-                  value={valor ? aTexto(valor) : ''}
-                  max={aTexto(hoy)}
-                  min={extremo === 'fin' && inicio ? aTexto(inicio) : undefined}
-                  onFocus={() => setActivo(extremo)}
-                  onChange={(e) => escribir(extremo, e.target.value)}
-                  className="w-full bg-transparent text-sm text-slate-800 tabular-nums focus:outline-none"
-                />
-              </label>
-            ))}
-          </div>
-
-          {/* Qué falta por pulsar, dicho en una línea. Sin esto, el segundo clic
-              es adivinar si el calendario está esperando algo. */}
-          <p className="text-xs text-slate-500 mb-3">
-            {activo === 'inicio'
-              ? 'Pulsa la fecha de inicio, o escríbela arriba.'
-              : 'Ahora la fecha de fin.'}
-          </p>
-
-          <div className="flex items-center justify-between mb-2">
+      <div className="px-5 py-4">
+        <div className="flex flex-wrap gap-2 mb-4">
+          {ATAJOS.map(({ etiqueta, dias: d }) => (
             <button
+              key={d}
               type="button"
-              onClick={() => setMes(new Date(mes.getFullYear(), mes.getMonth() - 1, 1))}
-              aria-label="Mes anterior"
-              className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100"
+              onClick={() => atajo(d)}
+              className="flex-1 min-w-[4rem] px-2 py-1.5 rounded-md text-sm font-medium border border-slate-300 text-slate-600 bg-white hover:bg-slate-100 transition-colors"
             >
-              <ChevronLeft size={18} />
+              {etiqueta}
             </button>
-            <span className="text-sm font-medium text-slate-700">
-              {MESES[mes.getMonth()]} {mes.getFullYear()}
-            </span>
-            <button
-              type="button"
-              onClick={() => setMes(new Date(mes.getFullYear(), mes.getMonth() + 1, 1))}
-              aria-label="Mes siguiente"
-              className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100"
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-7 gap-0.5 mb-1">
-            {DIAS.map((d, i) => (
-              <span key={i} className="text-center text-[11px] font-medium text-slate-400 py-1">
-                {d}
-              </span>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-0.5" onMouseLeave={() => setEncima(null)}>
-            {celdasDelMes(mes).map((dia, i) => {
-              if (!dia) return <span key={i} />;
-
-              // El futuro no se puede consultar: no hay datos que pedir.
-              const futuro = dia > hoy;
-              const esInicio = inicio && mismoDia(dia, inicio);
-              const esFin = fin && mismoDia(dia, fin);
-              const enMedio = dentro(dia);
-
-              let clases = 'text-slate-700 hover:bg-slate-100';
-              if (futuro) clases = 'text-slate-300 cursor-not-allowed';
-              else if (esInicio || esFin) clases = 'bg-primary-600 text-white font-semibold';
-              else if (enMedio) clases = 'bg-primary-50 text-primary-700';
-
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  disabled={futuro}
-                  onClick={() => elegir(dia)}
-                  onMouseEnter={() => setEncima(dia)}
-                  className={`h-9 rounded-md text-sm transition-colors ${clases}`}
-                >
-                  {dia.getDate()}
-                </button>
-              );
-            })}
-          </div>
+          ))}
         </div>
 
-      <div className="px-4 py-2 border-t border-slate-200">
-        <span className="text-xs text-slate-500 tabular-nums">
+        <div className="flex flex-wrap gap-6">
+          <Mes
+            titulo="Desde"
+            valor={inicio}
+            mes={mesInicio}
+            setMes={setMesInicio}
+            bloqueado={(dia) => dia > hoy}
+            onElegir={ponerInicio}
+            onEscribir={(t) => t && ponerInicio(aFecha(t))}
+            max={aTexto(hoy)}
+            inicio={inicio}
+            fin={fin}
+          />
+          <Mes
+            titulo="Hasta"
+            valor={fin}
+            mes={mesFin}
+            setMes={setMesFin}
+            bloqueado={(dia) => dia > hoy || (!!inicio && dia < inicio)}
+            onElegir={ponerFin}
+            onEscribir={(t) => t && ponerFin(aFecha(t))}
+            min={inicio ? aTexto(inicio) : undefined}
+            max={aTexto(hoy)}
+            inicio={inicio}
+            fin={fin}
+          />
+        </div>
+      </div>
+
+      <div className="px-5 py-2 border-t border-slate-200">
+        <span className="text-sm text-slate-500 tabular-nums">
           {inicio && fin
             ? `${aTexto(inicio)} → ${aTexto(fin)} · ${dias} ${dias === 1 ? 'día' : 'días'}`
             : inicio
-              ? `${aTexto(inicio)} → …`
+              ? `${aTexto(inicio)} → elige la fecha de fin`
               : 'Sin periodo'}
         </span>
       </div>
     </>
   );
 }
+
 
 
 interface Props {
@@ -340,7 +305,7 @@ export default function CalendarioRango({ desde, hasta, onAceptar, onCerrar }: P
       role="presentation"
     >
       <div
-        className="bg-white rounded-xl shadow-xl w-full max-w-sm"
+        className="bg-white rounded-xl shadow-xl w-full max-w-3xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

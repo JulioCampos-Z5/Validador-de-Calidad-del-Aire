@@ -153,6 +153,7 @@ def descargar():
     except Exception as e:
         registros.anotar_error('SIMAJ: falló la validación de lo descargado', e)
         return jsonify({'error': f'Error durante la validación: {e}'}), 500
+    ultimo.guardar_validado(df_validado, 'simaj', 'SIMAJ')
 
     # Mismo Excel y mismo nombre que produce el flujo de archivo, para que el
     # botón de descarga del tablero funcione igual venga de donde venga el dato.
