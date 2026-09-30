@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import {
   RefreshCw, X, ChevronDown, FileDown, Table2,
   Upload, FileInput, DownloadCloud, Radio, FolderKanban, Database, HardDriveDownload,
+  Gauge, Clock3,
 } from 'lucide-react';
+import { iasApi } from '../services/ias';
 import { useDatos, type Origen } from '../estado/DatosContexto';
 import apiService from '../services/api';
 import { minutalesApi } from '../services/minutales';
@@ -144,6 +146,32 @@ export default function OrigenDatos() {
           {!plegado && <span className="text-sm font-medium">Exportar reporte MIR</span>}
         </a>
       )}
+
+      {/* Índice Aire y Salud y cumplimiento NOM del conjunto validado, venga
+          de donde venga. Mismo cálculo que las pestañas de categorías. */}
+      {[
+        {
+          href: iasApi.urlDiario, icono: Gauge, texto: 'Exportar IAS/NOM diario',
+          detalle: 'Excel diario: índice Aire y Salud, cumplimiento NOM, resúmenes anuales, municipios y MIDE.',
+        },
+        {
+          href: iasApi.urlHorario, icono: Clock3, texto: 'Exportar IAS/NOM horario',
+          detalle: 'Excel horario: NowCast, promedios de 8 y 24 h, índice por contaminante y cumplimiento NOM. Con un año completo tarda cerca de un minuto.',
+        },
+      ].map(({ href, icono: Icono, texto, detalle }) => (
+        <a
+          key={href}
+          href={href}
+          title={`${texto}. ${detalle}`}
+          aria-label={texto}
+          className={plegado
+            ? clasesIcono()
+            : 'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 hover:bg-slate-100 transition-colors'}
+        >
+          <Icono size={plegado ? 20 : 17} className="shrink-0" />
+          {!plegado && <span className="text-sm font-medium">{texto}</span>}
+        </a>
+      ))}
 
     </>
   ) : null;

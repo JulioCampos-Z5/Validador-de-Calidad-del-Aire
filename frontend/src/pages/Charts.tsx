@@ -1,11 +1,13 @@
 import { useMemo, useRef, useState } from 'react';
 import {
-  BarChart3, AlertCircle, Activity, Clock, BoxSelect, CalendarDays,
+  BarChart3, AlertCircle, Activity, Clock, BoxSelect, CalendarDays, Grid3x3,
 } from 'lucide-react';
 import LineCharts from '../components/LineCharts';
 import PerfilHorario from '../components/PerfilHorario';
 import StatCharts from '../components/StatCharts';
 import CalendarHeatmaps from '../components/CalendarHeatmaps';
+import CategoriasPorHora from '../components/CategoriasPorHora';
+import DiaPorHora from '../components/DiaPorHora';
 import { useDatos } from '../estado/DatosContexto';
 
 interface DataPoint {
@@ -25,7 +27,9 @@ const ORIGENES: Record<string, string> = {
 };
 
 /**
- * Las cuatro vistas de la página, en pestañas.
+ * Las vistas de la página, en pestañas. Las dos últimas —categorías por hora
+ * y día × hora— siguen el método NOM-172 del Observatorio de Calidad del Aire
+ * (ver `graficas/nom172.ts`).
  *
  * Antes iban una debajo de otra: cuatro gráficas de Plotly con sus controles,
  * unas cuatro pantallas de alto. Para comparar el calendario con la serie
@@ -62,6 +66,18 @@ const PESTANAS = [
     etiqueta: 'Calendario',
     icono: CalendarDays,
     detalle: 'Cada hora del mes coloreada por su índice de calidad',
+  },
+  {
+    id: 'categorias' as const,
+    etiqueta: 'Categorías',
+    icono: BarChart3,
+    detalle: 'Días en cada categoría NOM-172 según la hora del día',
+  },
+  {
+    id: 'diahora' as const,
+    etiqueta: 'Día × hora',
+    icono: Grid3x3,
+    detalle: 'Cada día, su categoría diaria y sus 24 horas',
   },
 ];
 
@@ -194,6 +210,8 @@ const Charts = () => {
           {pestana === 'horario' && <PerfilHorario data={data} />}
           {pestana === 'distribucion' && <StatCharts data={data} />}
           {pestana === 'calendario' && <CalendarHeatmaps data={data} />}
+          {pestana === 'categorias' && <CategoriasPorHora data={data} />}
+          {pestana === 'diahora' && <DiaPorHora data={data} />}
         </>
       )}
     </div>

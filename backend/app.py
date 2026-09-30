@@ -104,6 +104,12 @@ app.register_blueprint(bp_emisiones)
 from historico.rutas import bp as bp_historico, guardar_importado
 app.register_blueprint(bp_historico)
 
+# Índice Aire y Salud (NOM-172) y cumplimiento de las NOM de salud sobre el
+# conjunto validado: Excel horario y diario, y datos de las gráficas de
+# categorías (ver ias/).
+from ias.rutas import bp as bp_ias
+app.register_blueprint(bp_ias)
+
 import ultimo
 
 # Configuración

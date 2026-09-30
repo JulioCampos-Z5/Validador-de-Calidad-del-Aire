@@ -104,7 +104,7 @@ cd backend
 python -m unittest discover -s pruebas -t .
 ```
 
-106 pruebas, sin dependencias externas. Ninguna toca la red ni escribe en el
+306 pruebas, sin dependencias externas. Ninguna toca la red ni escribe en el
 perfil del usuario. Ver [pruebas/README.md](backend/pruebas/README.md).
 
 ---
@@ -193,6 +193,35 @@ rangos y decimales que se usaron.
 
 ---
 
+## Índice Aire y Salud y cumplimiento NOM
+
+Sobre el conjunto ya validado —venga del origen que venga— se calcula el índice
+de la NOM-172-SEMARNAT-2023 y el cumplimiento de las NOM de salud (020, 021,
+022, 023 y 025). Es el port de las secciones 2 y 3 del script
+`validador_ENVISTA_IAS_NOM_num.py`, en `backend/ias/calculo.py`.
+
+- **Horario:** NowCast de 12 h para partículas, promedio de 8 h para CO,
+  valor horario para O₃, NO₂ y SO₂; categoría por contaminante y global, con
+  su responsable; cumplimiento de cada norma.
+- **Diario:** suficiencia de 18 de 24 horas; promedio de 24 h (partículas),
+  máximo horario (O₃, NO₂, SO₂) y máximo del promedio de 8 h (CO).
+- **Estación virtual AMG** (el máximo de la red) y **municipios** (el máximo
+  de las estaciones de su área de influencia).
+
+Se exporta desde el menú en dos Excel: **IAS/NOM diario** (las 8 hojas del
+script: diaria, resúmenes anuales, municipios y MIDE) e **IAS/NOM horario**.
+Las pestañas «Categorías» y «Día × hora» de Gráficas leen el mismo cálculo, así
+que pantalla y archivo dicen siempre lo mismo.
+
+Respecto al script se corrigieron cinco cosas, cada una con su prueba: el
+NowCast de PM2.5 usaba el factor de PM10; un hueco en el promedio de 8 h se
+contaba como «No cumple»; las ventanas contaban filas en vez de horas; los
+límites estaban fijos en 2026 (ahora 2024–2025 usan la columna de 2024); y el
+máximo diario de 8 h no exigía suficiencia. El detalle está en el docstring de
+`calculo.py`.
+
+---
+
 ## API
 
 | Método | Ruta | Qué hace |
@@ -217,6 +246,10 @@ rangos y decimales que se usaron.
 | `POST` | `/api/emisiones/salir` | Cerrar sesión |
 | `POST` | `/api/emisiones/descargar` | Consultar la API y validar |
 | `GET` | `/api/emisiones/muestra` | Respuesta cruda, para diagnosticar |
+| `GET` | `/api/ias/resumen` | Estaciones (con AMG) y meses con índice calculado |
+| `GET` | `/api/ias/categorias?estacion=&mes=` | Un mes de una estación: categoría de cada hora y del día |
+| `GET` | `/api/ias/diario.xlsx` | Excel diario del índice y la NOM (8 hojas) |
+| `GET` | `/api/ias/horario.xlsx` | Excel horario del índice y la NOM |
 
 `/api/minutales/descargar` y `/api/emisiones/descargar` devuelven **exactamente
 la misma forma** que `/api/validate/full`. Es deliberado: el tablero, las
@@ -232,7 +265,8 @@ backend/            API Flask; toda la lógica de validación vive en app.py
 ├── registros.py    Errores del servidor en memoria, para verlos desde la web
 ├── minutales/      Descarga del SIMAJ, indicador MIR y reporte de fallas
 ├── emisiones/      Cliente de la API de Emisiones, sesión y caché
-├── pruebas/        106 pruebas con unittest
+├── ias/            Índice Aire y Salud, cumplimiento NOM, AMG, municipios y MIDE
+├── pruebas/        306 pruebas con unittest
 └── validador-backend.spec   Empaquetado con PyInstaller
 
 frontend/           React + TypeScript + Vite + Tailwind

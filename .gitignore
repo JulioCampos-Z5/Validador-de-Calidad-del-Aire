@@ -74,3 +74,4 @@ node_modules/
 dist/
 salida/
 __pycache__/
+validador_ENVISTA_IAS_NOM_num.py
