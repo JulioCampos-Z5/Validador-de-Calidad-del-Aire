@@ -378,8 +378,10 @@ export default function CalendarHeatmaps({ data }: CalendarHeatmapsProps) {
             '📋 Umbrales de la NOM-172-SEMARNAT-2023, en vigor desde enero de 2026.',
             '   PM2.5: 15 / 25 / 79 / 130 µg/m³',
             '   PM10:  45 / 50 / 132 / 213 µg/m³',
+            '   O3: 0.058 / 0.090 / 0.135 / 0.175 ppm · CO: 5 / 9 / 12 / 16 ppm',
+            '   NO2: 0.053 / 0.106 / 0.160 / 0.213 ppm · SO2: 0.035 / 0.075 / 0.185 / 0.304 ppm',
             'La segunda categoría es «Aceptable», no «Regular».',
-            'Los anteriores (PM2.5 25/45/79/147, PM10 50/75/155/235) ya no se usan.',
+            'Los anteriores (de referencia, previos a la NOM-172) ya no se usan.',
           ]} />
         )}
       </div>

@@ -69,9 +69,9 @@ export function isMeteorologico(param: string): boolean {
 // Límites superiores de cada categoría, en las unidades de los datos (ppm y
 // µg/m³). Los usan el calendario y el fondo de las series.
 
-// Umbrales de referencia anteriores a la NOM-172 (los de Redspira). Siguen
-// aquí porque la norma nueva solo cambió las partículas: para O3, NO2, SO2 y
-// CO estos son los únicos que hay.
+// Umbrales de referencia anteriores a la NOM-172 (los de Redspira). Ya no se
+// usan para colorear —manda `UMBRALES_2026`, que cubre los seis contaminantes—;
+// quedan como lista de los parámetros que tienen índice.
 
 export const UMBRALES: Record<string, number[]> = {
   'PM2.5': [25, 45, 79, 147],
@@ -90,11 +90,19 @@ export const UMBRALES: Record<string, number[]> = {
  * mes de 2026 con la vara de 2025 —y a que dos personas mirando la misma
  * pantalla vieran categorías distintas para el mismo dato.
  *
- * Solo cubren partículas; el resto de contaminantes sigue con `UMBRALES`.
+ * Son los mismos que usa el backend (backend/ias/calculo.py) para el Excel y
+ * las pestañas «Categorías» y «Día × hora», para que una hora no se vea de un
+ * color en una gráfica y de otro en la siguiente. Los gases no cambian por
+ * año; las partículas son la columna de 2026 (el backend usa la de 2024 para
+ * datos de 2024–2025).
  */
 export const UMBRALES_2026: Record<string, number[]> = {
   'PM2.5': [15, 25, 79, 130],
   PM10:   [45, 50, 132, 213],
+  O3:     [0.058, 0.090, 0.135, 0.175],
+  NO2:    [0.053, 0.106, 0.160, 0.213],
+  SO2:    [0.035, 0.075, 0.185, 0.304],
+  CO:     [5, 9, 12, 16],
 };
 
 /** Los límites vigentes de un contaminante, o undefined si no tiene índice. */
@@ -133,7 +141,7 @@ export function umbralesEscala(param: string, escala: EscalaIndice): number[] | 
  */
 export const CATEGORIAS_INDICE_JALISCO: { nombre: string; color: string }[] = [
   { nombre: 'Buena', color: '#339933' },
-  { nombre: 'Regular', color: '#FFCC00' },  // «Aceptable» en partículas (NOM-172-2023)
+  { nombre: 'Regular', color: '#FFCC00' },  // «Aceptable» en la escala Aire y Salud (NOM-172)
   { nombre: 'Mala', color: '#FF6600' },
   { nombre: 'Muy mala', color: '#CC0000' },
   { nombre: 'Extremadamente mala', color: '#993399' },

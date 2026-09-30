@@ -232,14 +232,20 @@ const LineCharts = ({ data }: LineChartsProps) => {
   const [escala, setEscala] = useState<EscalaIndice>('aire-salud');
   // Serie que sigue el relleno: el dato horario o uno de los promedios.
   const [baseRelleno, setBaseRelleno] = useState<'horario' | Variante>('horario');
+  // Dónde va el color del índice: franjas horizontales en el fondo de la
+  // gráfica (cada categoría en su rango de concentración) o bajo la curva.
+  const [modoRelleno, setModoRelleno] = useState<'fondo' | 'curva'>('fondo');
   // Promedios activos, como «param|variante».
   const [variantes, setVariantes] = useState<Set<string>>(new Set());
   const tieneVariante = (p: string, v: Variante) => variantes.has(`${p}|${v}`);
-  // Un promedio por parámetro a la vez, elegido de la lista ('' = ninguno).
-  const elegirVariante = (p: string, v: Variante | '') =>
+  // Casillas: se pueden activar varios promedios del mismo parámetro a la vez,
+  // p. ej. el móvil de 24 h y el NowCast para compararlos. Cada uno se
+  // distingue por su trazo (VARIANTES[v].dash).
+  const alternarVariante = (p: string, v: Variante) =>
     setVariantes(prev => {
-      const next = new Set([...prev].filter(clave => !clave.startsWith(`${p}|`)));
-      if (v) next.add(`${p}|${v}`);
+      const next = new Set(prev);
+      const clave = `${p}|${v}`;
+      if (next.has(clave)) next.delete(clave); else next.add(clave);
       return next;
     });
   // Estilo de línea por parámetro (override manual)
@@ -576,7 +582,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
   // con fill:'tonexty': ese relleno no respeta los huecos y, al llegar a una
   // hora sin dato, une el área con el principio de la gráfica.
   const rellenoIndice = useMemo(() => {
-    if (!fondoActivo) return [];
+    if (!fondoActivo || modoRelleno !== 'curva') return [];
     const cortes = umbralesEscala(fondoActivo, escala)!;
     const eje = plotlyAxis(getAxis(fondoActivo));
 
@@ -633,7 +639,47 @@ const LineCharts = ({ data }: LineChartsProps) => {
         line: { width: 0 }, hoverinfo: 'skip', showlegend: false,
       }];
     });
-  }, [traces, fondoActivo, escala, baseActiva, axisAssignments, selectedStations, dataByStation, rejilla]);
+  }, [traces, fondoActivo, modoRelleno, escala, baseActiva, axisAssignments, selectedStations, dataByStation, rejilla]);
+
+  // Fondo por categorías: una franja horizontal por categoría, del ancho de
+  // toda la gráfica, entre sus límites de concentración en el eje del
+  // contaminante. La línea se lee contra el fondo: en qué color cae es su
+  // categoría, hora a hora y estación por estación.
+  //
+  // Las franjas se recortan al rango de los datos del eje: Plotly incluye las
+  // formas en su escala automática, y una franja de «Extremadamente mala»
+  // hasta el infinito aplastaría la curva contra el piso.
+  const bandasFondo = useMemo(() => {
+    if (!fondoActivo || modoRelleno !== 'fondo') return [];
+    const cortes = umbralesEscala(fondoActivo, escala)!;
+    const eje = plotlyAxis(getAxis(fondoActivo));
+
+    let piso = Infinity;
+    let techo = -Infinity;
+    traces.forEach(t => {
+      if (t.yaxis !== eje) return;
+      (t.y as (number | null)[]).forEach(v => {
+        if (v === null) return;
+        if (v < piso) piso = v;
+        if (v > techo) techo = v;
+      });
+    });
+    if (piso === Infinity) return [];
+
+    const limites = [Math.min(piso, 0), ...cortes, Infinity];
+    return CATEGORIAS_INDICE_JALISCO.flatMap(({ color }, i) => {
+      const y0 = limites[i];
+      const y1 = Math.min(limites[i + 1] ?? Infinity, techo);
+      if (y0 === undefined || y1 <= y0) return [];
+      return [{
+        type: 'rect', layer: 'below',
+        xref: 'paper', x0: 0, x1: 1,
+        yref: eje, y0, y1,
+        fillcolor: hexToRgba(color, 0.28),
+        line: { width: 0 },
+      }];
+    });
+  }, [traces, fondoActivo, modoRelleno, escala, axisAssignments]);
 
   const layout = useMemo(() => {
     const y1Params = Array.from(selectedParams).filter(p => getAxis(p) === 'y1');
@@ -674,7 +720,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
       hovermode: 'x unified',
       plot_bgcolor: '#f9fafb',
       paper_bgcolor: '#ffffff',
-      shapes: constantRunShapes,
+      shapes: [...bandasFondo, ...constantRunShapes],
       // Sin esto, cada Plotly.react devolvía todos los ejes a su escala
       // automática y se perdía el zoom del usuario.
       uirevision: 'series',
@@ -705,7 +751,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
     }
 
     return base;
-  }, [selectedParams, axisAssignments, constantRunShapes]);
+  }, [selectedParams, axisAssignments, constantRunShapes, bandasFondo]);
 
   const chartRef = useRef<HTMLDivElement>(null);
 
@@ -995,20 +1041,27 @@ const LineCharts = ({ data }: LineChartsProps) => {
                         )}
                       </div>
                       {selectedParams.has(param) && VARIANTES_POR_PARAM[param] && (
-                        <label className="flex items-center gap-2 ml-6 mt-0.5 text-xs text-gray-500">
-                          Promedio:
-                          <select
-                            value={VARIANTES_POR_PARAM[param].find(v => tieneVariante(param, v)) ?? ''}
-                            onChange={e => elegirVariante(param, e.target.value as Variante | '')}
-                            className="border border-gray-300 rounded px-1.5 py-0.5 text-xs bg-white"
-                            title={`Agrega un promedio de ${param} por estación`}
-                          >
-                            <option value="">Ninguno</option>
-                            {VARIANTES_POR_PARAM[param].map(v => (
-                              <option key={v} value={v}>{VARIANTES[v].etiqueta}</option>
-                            ))}
-                          </select>
-                        </label>
+                        <div
+                          role="group"
+                          aria-label={`Promedios de ${param}`}
+                          title={`Agrega uno o varios promedios de ${param} por estación`}
+                          className="flex flex-wrap items-center gap-x-3 gap-y-1 ml-6 mt-0.5 text-xs text-gray-500"
+                        >
+                          <span>Promedio:</span>
+                          {VARIANTES_POR_PARAM[param].map(v => (
+                            <label key={v} className="inline-flex items-center gap-1 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={tieneVariante(param, v)}
+                                onChange={() => alternarVariante(param, v)}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span className={tieneVariante(param, v) ? 'text-gray-800' : ''}>
+                                {VARIANTES[v].etiqueta}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
                       )}
                       </div>
                     ))}
@@ -1064,7 +1117,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
               className="border border-gray-300 rounded-md px-2 py-1 text-sm bg-white disabled:bg-gray-100 disabled:text-gray-400"
               title={conIndice.length === 0
                 ? 'Selecciona O3, NO2, SO2, CO, PM10 o PM2.5 para usar el relleno'
-                : 'Rellena bajo la curva de ese contaminante con el color de su categoría del índice'}
+                : 'Colorea la gráfica con las categorías del índice de ese contaminante'}
             >
               <option value="auto">Automático{fondoAuto ? ` (${fondoAuto})` : ''}</option>
               <option value="ninguno">Ninguno</option>
@@ -1073,7 +1126,32 @@ const LineCharts = ({ data }: LineChartsProps) => {
               ))}
             </select>
           </label>
-          {fondoActivo && basesRelleno.length > 0 && (
+          {fondoActivo && (
+            <div
+              role="radiogroup"
+              aria-label="Dónde va el color del índice"
+              className="flex rounded-md border border-gray-300 p-0.5 text-xs"
+            >
+              {([['fondo', 'Fondo'], ['curva', 'Bajo la curva']] as const).map(([id, texto]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="radio"
+                  aria-checked={modoRelleno === id}
+                  onClick={() => setModoRelleno(id)}
+                  title={id === 'fondo'
+                    ? 'Franjas horizontales con el rango de cada categoría; la línea se lee contra ellas'
+                    : 'Rellena bajo la curva de la estación con el valor más alto'}
+                  className={`px-2 py-0.5 rounded transition-colors ${
+                    modoRelleno === id ? 'bg-slate-800 text-white' : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {texto}
+                </button>
+              ))}
+            </div>
+          )}
+          {fondoActivo && modoRelleno === 'curva' && basesRelleno.length > 0 && (
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <span className="font-medium">Sigue:</span>
               <select
@@ -1119,10 +1197,14 @@ const LineCharts = ({ data }: LineChartsProps) => {
               <span className="text-gray-400">
                 {getUnitsAndName(fondoActivo).unit}
                 {escala === 'imeca' ? ' · IMECA según NADF-009-AIRE-2017' : ''}
-                {' · '}sigue a la estación con el valor más alto
-                {baseActiva === 'horario'
-                  ? ' en el dato horario; el índice oficial usa promedios (8 h, 24 h o NowCast), actívalos en Parámetros para compararlos.'
-                  : ` en ${VARIANTES[baseActiva].etiqueta}.`}
+                {modoRelleno === 'fondo'
+                  ? ` · franjas de ${fondoActivo} en el eje ${getAxis(fondoActivo).toUpperCase()}; el índice oficial usa promedios (8 h, 24 h o NowCast), actívalos en Parámetros para leerlos contra el fondo.`
+                  : <>
+                      {' · '}sigue a la estación con el valor más alto
+                      {baseActiva === 'horario'
+                        ? ' en el dato horario; el índice oficial usa promedios (8 h, 24 h o NowCast), actívalos en Parámetros para compararlos.'
+                        : ` en ${VARIANTES[baseActiva].etiqueta}.`}
+                    </>}
               </span>
             </div>
           )}
