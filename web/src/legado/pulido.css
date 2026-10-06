@@ -1,0 +1,29 @@
+/* Ajustes de estilo para que el codigo traido del frontend actual se vea
+   como el resto de v2 (doc/ARQUITECTURA-v2.md, seccion 9.3) sin tocar su
+   logica. Va despues de Tailwind. */
+
+/* Botones rellenos de azul -> el boton de v2: fondo del panel, borde oscuro.
+   Solo <button>: los rellenos de azul que marcan un dato (bandera VZ, ejes)
+   se quedan como estan. */
+button.bg-primary-500.text-white, button.bg-primary-600.text-white, button.bg-primary-700.text-white,
+button.bg-blue-500.text-white, button.bg-blue-600.text-white, button.bg-blue-700.text-white {
+  background: var(--panel) !important;
+  color: var(--tx) !important;
+  box-shadow: inset 0 0 0 1px var(--tx);
+  font-weight: 600;
+}
+button.bg-primary-500.text-white:hover, button.bg-primary-600.text-white:hover,
+button.bg-blue-500.text-white:hover, button.bg-blue-600.text-white:hover {
+  background: var(--suave) !important;
+}
+button.bg-primary-500.text-white:disabled, button.bg-primary-600.text-white:disabled,
+button.bg-blue-600.text-white:disabled {
+  color: var(--tx3) !important;
+  box-shadow: inset 0 0 0 1px var(--linea);
+}
+
+/* Titulos: el tamano y peso de v2. */
+h1.text-2xl { font-size: 21px; letter-spacing: -0.02em; }
+
+/* Bordes de tarjeta un poco mas suaves, como .panel de v2. */
+.rounded-xl.border-slate-200, .rounded-xl.border-gray-200 { border-color: var(--linea); }

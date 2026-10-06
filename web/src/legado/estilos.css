@@ -1,0 +1,6 @@
+/* Tailwind para el codigo traido del frontend actual. Se carga ANTES que
+   compartido/base.css (ver legado/montar.tsx) para que lo de v2 mande. */
+@import './tema.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

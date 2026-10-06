@@ -1,6 +1,7 @@
 packages:
   - frontend
   - escritorio
+  - web
 
 # Electron y electron-builder descargan sus binarios en el postinstall;
 # esbuild enlaza el binario nativo que usa Vite al compilar el frontend.

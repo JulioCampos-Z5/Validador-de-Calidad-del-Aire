@@ -1,0 +1,102 @@
+/*
+ * Base visual del front v2 (doc/ARQUITECTURA-v2.md, seccion 9.3).
+ * Lo comparten el shell y todos los modulos: cada iframe la carga igual, asi
+ * que un modulo se ve como parte del mismo programa.
+ *
+ * Color solo para el nivel: verde bien, ambar falla, rojo incumple NOM, gris
+ * sin comunicacion. Todo lo demas, neutro.
+ */
+:root {
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --suave: #f4f5f7;
+  --linea: #e3e5e8;
+  --boton-borde: #9aa1ab;
+  --tx: #14161a;
+  --tx2: #3f444c;
+  --tx3: #80868f;
+  --ok: #22a06b;
+  --wa: #d99a1e;
+  --er: #d64545;
+  --no: #c6cad0;
+  --acc: #3b6fe0;
+  --acc-bg: #ecf2fe;
+  --er-linea: #f2bcbc;
+  --wa-linea: #f2d9a6;
+  --er-bg: #fdf0f0;
+
+  --fuente: 'Manrope', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  color-scheme: light;
+}
+
+:root[data-tema='oscuro'] {
+  --bg: #0f1114;
+  --panel: #171a1e;
+  --suave: #1e2226;
+  --linea: #2c3036;
+  --boton-borde: #6a717b;
+  --tx: #eef0f3;
+  --tx2: #d0d5dc;
+  --tx3: #7c838d;
+  --ok: #45c48a;
+  --wa: #e8b04a;
+  --er: #ee6c6c;
+  --no: #4a5058;
+  --acc: #82acf5;
+  --acc-bg: #1c2b46;
+  --er-linea: #6e2c2c;
+  --wa-linea: #6b5220;
+  --er-bg: #2a1616;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--tx);
+  font-family: var(--fuente);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input { font: inherit; color: inherit; }
+
+.mono { font-family: var(--mono); font-size: 0.92em; }
+.cap { font-size: 12px; color: var(--tx3); }
+.titulo { font-size: 21px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+
+/* Botones: fondo del panel, borde gris y texto oscuro; el elegido solo
+   oscurece el borde. */
+.boton {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--tx);
+  background: var(--panel);
+  border: 1px solid var(--boton-borde);
+  border-radius: 10px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.boton:hover { border-color: var(--tx3); }
+.boton.elegido { border-color: var(--tx); }
+.boton:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+
+.punto { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+.ok { background: var(--ok); }
+.wa { background: var(--wa); }
+.er { background: var(--er); }
+.no { background: var(--no); }
+
+.aviso-error {
+  background: var(--er-bg);
+  border: 1px solid var(--er-linea);
+  color: var(--tx);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+}

@@ -1,0 +1,78 @@
+html, body, #raiz { height: 100%; }
+
+.shell { display: grid; grid-template-columns: 60px minmax(0, 1fr); height: 100%; }
+
+.marca {
+  width: 32px; height: 32px; border-radius: 9px;
+  background: var(--tx); color: var(--bg);
+  font-size: 12px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* Barra angosta de iconos; el nombre aparece al pasar el cursor. */
+.riel {
+  background: var(--panel); border-right: 1px solid var(--linea);
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 0;
+}
+.riel .marca { margin-bottom: 12px; }
+.riel-boton {
+  position: relative; width: 38px; height: 38px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--tx2); background: none; border: none; cursor: pointer;
+}
+.riel-boton:hover { background: var(--suave); }
+.riel-boton.activo { background: var(--acc-bg); color: var(--acc); }
+.riel-boton.en-proceso { color: var(--tx3); }
+.riel-boton.en-proceso.activo { background: var(--suave); color: var(--tx2); }
+.riel-boton:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.riel-boton.abajo { margin-top: auto; }
+.riel-boton::after {
+  content: attr(data-etiqueta);
+  position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
+  background: var(--tx); color: var(--bg);
+  font-size: 12px; font-weight: 500; white-space: nowrap;
+  padding: 4px 9px; border-radius: 7px;
+  opacity: 0; pointer-events: none; transition: opacity 0.12s; z-index: 10;
+}
+.riel-boton:hover::after, .riel-boton:focus-visible::after { opacity: 1; }
+
+.usuario { position: relative; margin-top: 8px; }
+.avatar {
+  width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer;
+  background: var(--acc-bg); color: var(--acc); font-size: 11px; font-weight: 600;
+}
+.menu-usuario {
+  position: absolute; left: calc(100% + 12px); bottom: 0; z-index: 20; width: 230px;
+  background: var(--panel); border: 1px solid var(--linea); border-radius: 12px; padding: 14px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+}
+
+.contenido { min-width: 0; height: 100%; overflow: hidden; background: var(--bg); }
+.marco { width: 100%; height: 100%; border: none; display: block; background: var(--bg); }
+
+.en-proceso-caja {
+  height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; color: var(--tx3); padding: 24px;
+}
+
+/* Login */
+.login { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+.login-caja {
+  width: 100%; max-width: 360px; background: var(--panel);
+  border: 1px solid var(--linea); border-radius: 16px; padding: 30px 28px;
+}
+.login-caja .marca { margin-bottom: 18px; }
+.campo { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; font-size: 13px; font-weight: 500; }
+.campo input {
+  height: 40px; padding: 0 12px; border-radius: 10px;
+  border: 1px solid var(--boton-borde); background: var(--bg); font-size: 14px;
+}
+.campo input:focus { outline: 2px solid var(--acc); outline-offset: 0; border-color: transparent; }
+.login-error { color: var(--er); font-size: 13px; margin: 0 0 12px; }
+.login-entrar { width: 100%; height: 40px; font-weight: 600; margin-top: 4px; }
+.login-entrar:disabled { cursor: progress; color: var(--tx3); }
+
+@media (max-width: 520px) {
+  .shell { grid-template-columns: 52px minmax(0, 1fr); }
+  .riel-boton::after { display: none; }
+}

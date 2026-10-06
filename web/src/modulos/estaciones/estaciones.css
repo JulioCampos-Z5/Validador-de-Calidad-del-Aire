@@ -1,0 +1,48 @@
+.filtros { display: flex; gap: 8px; }
+
+/* Barra de estado de toda la red y su leyenda */
+.barra-red { display: flex; height: 6px; border-radius: 3px; overflow: hidden; gap: 2px; margin-bottom: 8px; }
+.leyenda { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; }
+.leyenda .punto { margin-right: 2px; vertical-align: 0; }
+
+/* Mosaico: una tarjeta por estacion, un punto por puerto */
+.mosaico { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.tarjeta {
+  text-align: left; cursor: pointer; min-width: 0;
+  background: var(--panel); border: 1px solid var(--linea); border-radius: 12px; padding: 12px 14px;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.tarjeta:hover { border-color: var(--tx3); }
+.tarjeta:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.tarjeta.borde-er { border-color: var(--er-linea); }
+.tarjeta.borde-wa { border-color: var(--wa-linea); }
+.tarjeta.abierta { border-color: var(--tx); }
+.tarjeta-titulo { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 600; }
+.tarjeta-resumen { margin: 3px 0 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.puntos { display: flex; flex-wrap: wrap; gap: 5px; }
+.puntos .punto { cursor: help; }
+
+/* Detalle de una estacion */
+.detalle {
+  background: var(--panel); border: 1px solid var(--linea); border-radius: 14px;
+  padding: 16px 18px; margin-bottom: 16px;
+}
+.detalle-cabecera { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.detalle-titulo { font-size: 17px; font-weight: 600; margin: 0; }
+.cerrar { background: none; border: none; color: var(--tx3); cursor: pointer; padding: 4px; border-radius: 8px; }
+.cerrar:hover { background: var(--suave); color: var(--tx); }
+.detalle-columnas { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+.lista { list-style: none; margin: 0; padding: 0; }
+.lista li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--linea); font-size: 13px; }
+.lista li:first-child { border-top: none; }
+.lista-quien { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lista-cuando { white-space: nowrap; }
+
+
+@media (max-width: 520px) {
+  .mosaico { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  /* En angosto el resumen se corta justo en el "cuanto lleva": dos lineas. */
+  .tarjeta-resumen {
+    white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  }
+}

@@ -1,0 +1,54 @@
+/* Piezas comunes de las vistas: pagina, cabecera, tablas, formularios,
+   tarjetas de numero y avisos. Mismo lenguaje visual que Estaciones. */
+
+.pagina { padding: 22px 26px 40px; }
+.cabecera { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.cabecera .acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+.seccion { margin-bottom: 26px; }
+.subtitulo { font-size: 12px; font-weight: 600; color: var(--tx3); margin: 0 0 8px; }
+.h2 { font-size: 16px; font-weight: 600; margin: 0 0 10px; }
+
+/* Numeros grandes */
+.numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 20px; }
+.numero { background: var(--suave); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+.numero .valor { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.numero .etq { font-size: 12px; color: var(--tx3); }
+
+/* Panel con borde */
+.panel { background: var(--panel); border: 1px solid var(--linea); border-radius: 14px; padding: 16px 18px; }
+
+/* Tablas: filas con linea, sin cajas */
+.tabla-caja { overflow-x: auto; border: 1px solid var(--linea); border-radius: 12px; background: var(--panel); }
+.tabla { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tabla th { text-align: left; font-weight: 600; font-size: 12px; color: var(--tx3); padding: 9px 12px; border-bottom: 1px solid var(--linea); white-space: nowrap; }
+.tabla td { padding: 9px 12px; border-top: 1px solid var(--linea); vertical-align: middle; }
+.tabla tr:first-child td { border-top: none; }
+.tabla .num { text-align: right; font-variant-numeric: tabular-nums; }
+.tabla tr.clic { cursor: pointer; }
+.tabla tr.clic:hover td { background: var(--suave); }
+
+/* Formularios */
+.form { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px 14px; }
+.campo { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; font-weight: 500; color: var(--tx2); min-width: 0; }
+.campo.ancho { grid-column: 1 / -1; }
+.campo input, .campo select, .campo textarea {
+  height: 38px; padding: 0 11px; border-radius: 10px; border: 1px solid var(--boton-borde);
+  background: var(--bg); color: var(--tx); font-size: 13.5px; font-weight: 400; width: 100%;
+}
+.campo textarea { height: 76px; padding: 8px 11px; resize: vertical; }
+.campo input:focus, .campo select:focus, .campo textarea:focus { outline: 2px solid var(--acc); outline-offset: 0; border-color: transparent; }
+.form-pie { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; align-items: center; }
+.error-campo { color: var(--er); font-size: 12.5px; margin: 0; }
+.boton.primario { border-color: var(--tx); font-weight: 600; }
+.boton:disabled { color: var(--tx3); cursor: progress; }
+
+/* Etiqueta de estado (texto con su punto) */
+.estado { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+
+.aviso { background: var(--suave); border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--tx2); }
+.vacio { border: 1px dashed var(--linea); border-radius: 14px; padding: 36px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; }
+.token { font-family: var(--mono); font-size: 12px; word-break: break-all; background: var(--suave); padding: 10px 12px; border-radius: 10px; margin: 8px 0; }
+
+@media (max-width: 520px) {
+  .pagina { padding: 16px; }
+}
