@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import {
-  BarChart3, AlertCircle, Activity, Clock, BoxSelect, CalendarDays, Grid3x3,
+  BarChart3, AlertCircle, Activity, Clock, BoxSelect, CalendarDays, Grid3x3, Wind,
 } from 'lucide-react';
 import LineCharts from '../components/LineCharts';
 import PerfilHorario from '../components/PerfilHorario';
@@ -8,6 +8,7 @@ import StatCharts from '../components/StatCharts';
 import CalendarHeatmaps from '../components/CalendarHeatmaps';
 import CategoriasPorHora from '../components/CategoriasPorHora';
 import DiaPorHora from '../components/DiaPorHora';
+import VientoFlechas from '../components/VientoFlechas';
 import { useDatos } from '../estado/DatosContexto';
 
 interface DataPoint {
@@ -78,6 +79,12 @@ const PESTANAS = [
     etiqueta: 'Día × hora',
     icono: Grid3x3,
     detalle: 'Cada día, su categoría diaria y sus 24 horas',
+  },
+  {
+    id: 'viento' as const,
+    etiqueta: 'Viento',
+    icono: Wind,
+    detalle: 'Velocidad y dirección del viento con flechas, por estación',
   },
 ];
 
@@ -212,6 +219,7 @@ const Charts = () => {
           {pestana === 'calendario' && <CalendarHeatmaps data={data} />}
           {pestana === 'categorias' && <CategoriasPorHora data={data} />}
           {pestana === 'diahora' && <DiaPorHora data={data} />}
+          {pestana === 'viento' && <VientoFlechas data={data} />}
         </>
       )}
     </div>

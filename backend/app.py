@@ -1518,8 +1518,12 @@ if __name__ == '__main__':
     depurar = os.environ.get('VALIDADOR_DEBUG') == '1'
     host = os.environ.get('VALIDADOR_HOST', '127.0.0.1')
     recargar = not empaquetado and os.environ.get('VALIDADOR_SIN_RECARGA') != '1'
+    # Otro puerto para desarrollo: con la app de escritorio abierta el 8000 ya
+    # es suyo, y un segundo backend ahí le contestaba en su lugar (sin la base
+    # local). El frontend de desarrollo lo sigue con VALIDADOR_BACKEND.
+    puerto = int(os.environ.get('VALIDADOR_PUERTO', '8000'))
 
-    print(f"Escuchando en {host}:8000  |  depurador: {'ON' if depurar else 'off'}"
+    print(f"Escuchando en {host}:{puerto}  |  depurador: {'ON' if depurar else 'off'}"
           f"  |  recarga automatica: {'ON' if recargar else 'off'}\n")
 
-    app.run(debug=depurar, use_reloader=recargar, host=host, port=8000)
+    app.run(debug=depurar, use_reloader=recargar, host=host, port=puerto)
