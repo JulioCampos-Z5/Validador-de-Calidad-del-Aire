@@ -1,0 +1,27 @@
+# MySQL para desarrollo local de la API.
+#
+#   docker compose --env-file api/.env -f api/dev/docker-compose.yml up -d
+#
+# Va en el puerto 3307 para no chocar con otro MySQL que ya use el 3306.
+# Crea las bases semadet y monitor_puertos (ver init.sql). Las contrasenas
+# salen de api/.env (copia .env.example).
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: validador-mysql-dev
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?define MYSQL_ROOT_PASSWORD en api/.env}
+      MYSQL_USER: validador
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?define MYSQL_PASSWORD en api/.env}
+      TZ: UTC
+    command: ["--innodb-buffer-pool-size=256M"]
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - validador-mysql-dev:/var/lib/mysql
+
+volumes:
+  validador-mysql-dev:
