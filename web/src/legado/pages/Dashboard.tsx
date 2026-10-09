@@ -90,7 +90,7 @@ export default function Dashboard() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-semibold text-slate-800">Validación</h1>
-        <p className="text-slate-500 mt-1">Trae los datos en el panel Datos, ajusta las validaciones y revisa el resultado.</p>
+        <p className="text-slate-500 mt-1">Trae los datos desde el Tablero (Carga de datos), ajusta las validaciones y revisa el resultado.</p>
       </div>
 
       {/* API Status */}
@@ -118,9 +118,9 @@ export default function Dashboard() {
           <h2 className="text-lg font-semibold text-slate-800 mb-4">Inicio Rápido</h2>
           <div className="space-y-3">
             {[
-              { n: 1, title: 'Elegir el periodo y el origen', desc: 'En el panel Datos: archivo, SIMAJ o API de Emisiones' },
+              { n: 1, title: 'Elegir el periodo y el origen', desc: 'En el Tablero, Carga de datos: archivo, SIMAJ o API de Emisiones' },
               { n: 2, title: 'Configurar validaciones', desc: 'Selecciona y personaliza las validaciones en la sección inferior' },
-              { n: 3, title: 'Descargar resultados', desc: 'Obtén el Excel con datos validados y reportes, también desde el panel Datos' },
+              { n: 3, title: 'Descargar resultados', desc: 'Obtén el Excel con datos validados y reportes, también desde Carga de datos en el Tablero' },
             ].map(({ n, title, desc }) => (
               <div key={n} className="flex items-start gap-3">
                 <span className="flex-shrink-0 w-6 h-6 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center text-sm font-medium">{n}</span>

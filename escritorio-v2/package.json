@@ -8,7 +8,7 @@
   "scripts": {
     "test": "node --test \"pruebas/*.test.mjs\"",
     "web": "pnpm --dir ../web build",
-    "api": "go build -C ../api -trimpath -ldflags \"-s -w\" -o ../escritorio-v2/build/validador-api.exe ./cmd/api",
+    "api": "node compilar-api.mjs",
     "backend": "python -m PyInstaller --distpath ../backend/dist --workpath ../backend/build --noconfirm ../backend/validador-backend.spec",
     "dev": "pnpm web && pnpm api && pnpm llaves && electron .",
     "exe": "pnpm web && pnpm api && pnpm llaves && pnpm backend && electron-builder --win --publish never",

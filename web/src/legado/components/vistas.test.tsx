@@ -79,6 +79,22 @@ describe('Comportamiento horario', () => {
     const trazas = Plotly.react.mock.calls.at(-1)![1] as { x: unknown[] }[]
     expect(trazas[0].x).toHaveLength(24)
   })
+
+  it('«Todos los días»: un bloque por mes con los dias de cada hora, sin promedio', async () => {
+    render(<PerfilHorario data={conjunto()} />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Todos los días' }))
+    await waitFor(() => {
+      const [, trazas, disposicion] = Plotly.react.mock.calls.at(-1)! as [unknown, { mode: string; x: number[] }[], { xaxis: { tickmode: string }; annotations: { text: string }[] }]
+      expect(trazas).toHaveLength(1)
+      expect(trazas[0].mode).toBe('lines')
+      expect(trazas[0].x.length).toBeGreaterThan(24)
+      expect(disposicion.xaxis.tickmode).toBe('array')
+      expect(disposicion.annotations.length).toBeGreaterThan(0)
+    })
+    // Al comparar fechas no aplica.
+    await userEvent.click(screen.getByRole('button', { name: /Comparar fechas/ }))
+    expect(screen.getByRole('tab', { name: 'Todos los días' })).toBeDisabled()
+  })
 })
 
 describe('Distribucion', () => {
@@ -149,14 +165,14 @@ describe('Día × hora', () => {
     dia('2026-09-29', 0, [1, ...Array(23).fill(0)]), // una hora peor que el dia
   ]
 
-  it('sin la columna +peor; el resumen cuenta las horas peores', () => {
+  it('sin la columna +peor ni el panel de resumen', () => {
     conCategorias(dias)
     render(<DiaPorHora data={[]} />)
     expect(screen.queryByText(/\+peor/)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Qué significa/ })).not.toBeInTheDocument()
     expect(screen.getAllByRole('columnheader').map((c) => c.textContent)).not.toContain('+peor')
-    expect(screen.getByText(/1 de 2 días tuvieron horas peores que su categoría diaria/)).toBeInTheDocument()
-    expect(screen.getByText(/quedaron por encima de la categoría del día\.$/)).toBeInTheDocument()
+    expect(screen.queryByText(/Lo que se pierde al resumir el día/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/tuvieron horas peores que su categoría diaria/)).not.toBeInTheDocument()
     // 3 columnas fijas + 24 horas por fila, nada mas.
     expect(within(screen.getAllByRole('row')[1]).getAllByRole('cell')).toHaveLength(27)
   })
@@ -164,7 +180,7 @@ describe('Día × hora', () => {
   it('tocar un dia abre su detalle; calendario como otra vista', async () => {
     conCategorias(dias)
     render(<DiaPorHora data={[]} />)
-    await userEvent.click(screen.getByRole('button', { name: /29\s*sep/ }))
+    await userEvent.click(screen.getAllByRole('row')[2])
     expect(screen.getAllByText(/29/).length).toBeGreaterThan(1)
     await userEvent.click(screen.getByRole('tab', { name: 'Calendario' }))
     expect(screen.getByText('lun')).toBeInTheDocument()

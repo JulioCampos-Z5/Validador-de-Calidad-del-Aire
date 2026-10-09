@@ -56,3 +56,13 @@
 .boton:disabled { opacity: 0.45; cursor: default; }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Avance de la descarga de histórico */
+.aw-avance { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--linea); border-radius: 10px; }
+.aw-avance-cabecera { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
+.aw-progreso { height: 8px; border-radius: 999px; background: var(--suave); overflow: hidden; }
+.aw-progreso-relleno { height: 100%; background: var(--acc); border-radius: 999px; transition: width .4s ease; }
+.aw-progreso-relleno.error { background: var(--er); }
+.aw-cola { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
+.aw-cola li { display: flex; justify-content: space-between; padding: 3px 6px; border-radius: 6px; color: var(--tx2); }
+.aw-cola li.actual { background: var(--suave); color: var(--tx); font-weight: 600; }

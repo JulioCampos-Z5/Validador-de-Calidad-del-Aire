@@ -54,7 +54,7 @@ Descarga `Validador-v2-instalador.exe` desde «Descargar la app» en Validación
 o compílalo:
 
 ```bash
-pnpm --dir escritorio-v2 exe   # deja el instalador en salida-v2/
+pnpm instalador   # deja el instalador en salida-v2/
 ```
 
 Windows 64 bits. **No requiere Python**: el motor de análisis, la API de Go y
@@ -82,11 +82,17 @@ docker compose up -d --build   # el motor de análisis en :8080
 
 ### En desarrollo
 
+Desde la raíz del proyecto, una vez instaladas las dependencias
+(`pip install -r backend/requirements.txt` y `pnpm install`):
+
 ```bash
-cd backend && pip install -r requirements.txt && python app.py   # motor de análisis
-go -C api run ./cmd/api                                          # API central, :8081
-pnpm --dir web dev                                               # front v2, :3100
+pnpm iniciar
 ```
+
+Arranca las tres piezas —motor de análisis en :8010, API central en :8081
+(dentro de `api/`, donde está su `.env`) y front v2 en :3100— y abre en
+http://localhost:3100. Por separado: `pnpm motor`, `pnpm api`, `pnpm dev`. Más
+detalle en [doc/COMANDOS.md](doc/COMANDOS.md).
 
 Ver [web/README.md](web/README.md) y [api/README.md](api/README.md).
 
@@ -97,7 +103,7 @@ cd backend
 python -m unittest discover -s pruebas -t .
 ```
 
-306 pruebas, sin dependencias externas. Ninguna toca la red ni escribe en el
+360 pruebas, sin dependencias externas. Ninguna toca la red ni escribe en el
 perfil del usuario. Ver [pruebas/README.md](backend/pruebas/README.md).
 
 ---

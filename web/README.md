@@ -26,22 +26,22 @@ Necesita la API de Go en `:8081` (ver [api/README.md](../api/README.md)) y, para
 Validación y Gráficas, el backend de Python en `:8010` (`VALIDADOR_BACKEND_URL`).
 
 ```bash
-pnpm install              # desde la raíz del repo
-pnpm --dir web dev        # http://localhost:3100  (/api se reenvía a :8081)
-pnpm --dir web test       # pruebas unitarias (Vitest + jsdom + Testing Library)
-pnpm --dir web build      # deja web/dist/
+pnpm install   # todos desde la raíz del repo
+pnpm dev       # http://localhost:3100  (/api se reenvía a :8081)
+pnpm test      # pruebas unitarias (Vitest + jsdom + Testing Library)
+pnpm build     # deja web/dist/
 ```
 
 ## Pruebas
 
-`pnpm --dir web test` corre todo el front v2: shell,
+`pnpm test` corre todo el front v2: shell,
 módulos propios, las páginas de `legado/` con sus gráficas (Plotly simulado),
 servicios HTTP (axios con un adaptador falso), el estado compartido y el
 arranque de cada `m/<modulo>/index.html` con el puente al shell simulado.
 
 - La preparación común está en `src/pruebas/preparar.ts` (matchers de Testing
   Library, IndexedDB falso y lo que jsdom no trae).
-- Cobertura: `pnpm --dir web exec vitest run --coverage`.
+- Cobertura: `pnpm cobertura` (desde la raíz).
 - Cada prueba vive junto a lo que prueba (`*.test.ts(x)`).
 
 ## Estructura

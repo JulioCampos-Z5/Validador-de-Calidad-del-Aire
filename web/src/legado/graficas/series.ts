@@ -246,3 +246,46 @@ export function promedioPorHoraDelDia(
     cuentas,
   };
 }
+
+const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/**
+ * Los valores del periodo acomodados como la gráfica de Excel del laboratorio:
+ * un bloque por mes; dentro del mes, las horas de 0 a 23; y dentro de cada
+ * hora, los días del mes uno tras otro. Unidos en una sola línea, los días de
+ * una misma hora forman las líneas verticales y cada mes una «montaña».
+ *
+ * La hora `h` del bloque `b` ocupa de `b*24 + h` a `b*24 + h + 0.9`; cada día
+ * se coloca según su número de día, así el día 1 queda a la izquierda.
+ */
+export function bloquesMesHora(
+  rejilla: string[],
+  valores: (number | null)[],
+): { x: number[]; y: number[]; fechas: string[]; meses: { etiqueta: string; inicio: number }[] } {
+  // mes → hora → [día, valor, fecha]
+  const porMes = new Map<string, [number, number, string][][]>();
+  rejilla.forEach((t, i) => {
+    const v = valores[i];
+    const h = Number(t.slice(11, 13));
+    if (v === null || Number.isNaN(h)) return;
+    const mes = t.slice(0, 7);
+    let horas = porMes.get(mes);
+    if (!horas) porMes.set(mes, (horas = Array.from({ length: 24 }, () => [])));
+    horas[h].push([Number(t.slice(8, 10)), v, t.slice(0, 16).replace('T', ' ')]);
+  });
+  const x: number[] = [];
+  const y: number[] = [];
+  const fechas: string[] = [];
+  const meses: { etiqueta: string; inicio: number }[] = [];
+  [...porMes.keys()].sort().forEach((mes, b) => {
+    meses.push({ etiqueta: `${MESES_CORTOS[Number(mes.slice(5, 7)) - 1]} ${mes.slice(0, 4)}`, inicio: b * 24 });
+    porMes.get(mes)!.forEach((dias, h) => {
+      dias.sort((a, c) => a[0] - c[0]).forEach(([dia, v, fecha]) => {
+        x.push(b * 24 + h + ((dia - 1) / 31) * 0.9);
+        y.push(v);
+        fechas.push(fecha);
+      });
+    });
+  });
+  return { x, y, fechas, meses };
+}

@@ -184,3 +184,54 @@ export function finDe(ultima: string | undefined, ahora: number): number {
   const u = ultima ? new Date(ultima).getTime() : ahora
   return Math.min(ahora, u + 60_000)
 }
+
+/** Máximo de días que acepta la API por descarga: «todo lo disponible». */
+export const DIAS_MAXIMOS = 365
+
+export interface Avance {
+  /** De la estación en curso, 0 a 1. */
+  estacion: number
+  /** De toda la descarga (todas las estaciones de la cola), 0 a 1. */
+  total: number
+  /** Lo que falta, estimado con el ritmo de la estación en curso; null si aún no se sabe. */
+  faltaMs: number | null
+  /** Cuántas estaciones de la cola ya terminaron y cuántas son. */
+  hechas: number
+  estaciones: number
+}
+
+/**
+ * Cuánto lleva una descarga de histórico. La API baja hacia atrás desde ahora
+ * hasta `dias` atrás, así que el avance es qué tanto de ese tramo cubre ya la
+ * lectura más vieja que llegó (`llegoA`). Si Ambient Weather se queda sin
+ * datos antes, la estación termina antes de tiempo: terminada cuenta como 100%.
+ *
+ * `cola` son las MAC en el orden en que la API las baja (todas las estaciones)
+ * o null si es una sola. Las que faltan se estiman con lo que tardó la actual.
+ */
+export function avanceDescarga(d: Descarga, cola: string[] | null, ahora: number): Avance {
+  const inicio = new Date(d.inicio).getTime()
+  const tramo = d.dias * 86_400_000
+  const cubierto = d.llegoA ? inicio - new Date(d.llegoA).getTime() : 0
+  const estacion = d.estado === 'terminada' ? 1 : Math.min(1, Math.max(0, cubierto / tramo))
+  const pos = cola ? Math.max(0, cola.indexOf(d.mac)) : 0
+  const estaciones = cola?.length || 1
+  const hechas = pos + (d.estado === 'terminada' ? 1 : 0)
+  const total = Math.min(1, (pos + estacion) / estaciones)
+
+  let faltaMs: number | null = null
+  if (d.estado === 'terminada' && hechas >= estaciones) faltaMs = 0
+  else if (d.estado === 'descargando' && estacion > 0.01) {
+    const porEstacion = (ahora - inicio) / estacion
+    faltaMs = Math.max(0, porEstacion * (1 - estacion) + porEstacion * (estaciones - pos - 1))
+  }
+  return { estacion, total, faltaMs, hechas, estaciones }
+}
+
+/** «unos 4 min», «1 h 20 min», «menos de un minuto». */
+export function duracion(ms: number): string {
+  if (ms < 60_000) return 'menos de un minuto'
+  const min = Math.round(ms / 60_000)
+  if (min < 60) return `unos ${min} min`
+  return `unas ${Math.floor(min / 60)} h ${min % 60} min`
+}

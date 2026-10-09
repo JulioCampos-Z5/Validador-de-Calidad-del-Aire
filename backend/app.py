@@ -1519,7 +1519,6 @@ if __name__ == '__main__':
     print("\n" + "="*60)
     print("API DE VALIDACIÓN DE CALIDAD DEL AIRE")
     print("="*60)
-    print(f"Servidor iniciando en http://localhost:8000")
     print("="*60 + "\n")
     
     # `debug=True` de Flask junta dos cosas que conviene separar: el depurador

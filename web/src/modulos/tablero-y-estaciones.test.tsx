@@ -4,6 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Cliente } from '../compartido/api'
 import type { PropsModulo } from '../compartido/modulo'
 import type { Conjunto, EstadoEstacion, EventoPuerto } from '../compartido/tipos'
+// El panel de carga es el de Validación (tiene sus propias pruebas).
+vi.mock('../legado/components/OrigenDatos', () => ({ default: () => <div>panel de carga</div> }))
+// La descarga de Ambient Weather tiene sus propias pruebas en su módulo.
+vi.mock('./ambientweather/Descarga', () => ({ DescargaAmbient: () => <div>descarga de ambient</div> }))
 import { Tablero } from './tablero/Tablero'
 import { Estaciones } from './estaciones/Estaciones'
 
@@ -68,8 +72,11 @@ describe('Tablero', () => {
     expect(screen.getByText('En almacén').nextSibling).toHaveTextContent('1')
     await userEvent.click(screen.getByRole('button', { name: /Ver estaciones/ }))
     expect(p.ir).toHaveBeenCalledWith('estaciones')
-    await userEvent.click(screen.getByRole('button', { name: /Cargar datos/ }))
-    expect(p.ir).toHaveBeenCalledWith('validacion')
+    // La carga de datos va debajo de «Ir a», con el panel de Validación.
+    const carga = screen.getByRole('region', { name: 'Carga de datos' })
+    expect(within(carga).getByText('panel de carga')).toBeInTheDocument()
+    const accesos = screen.getByRole('region', { name: 'Ir a' })
+    expect(accesos.compareDocumentPosition(carga) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('con datos cargados los resume y lleva a Gráficas', async () => {
@@ -94,8 +101,22 @@ describe('Tablero', () => {
     expect(ir.queryByRole('button', { name: /^Admin/ })).not.toBeInTheDocument() // solo root y admin
     expect(ir.getByRole('button', { name: /^Inventario/ })).toBeDisabled()
     expect(ir.getByRole('button', { name: /^Inventario/ })).toHaveTextContent('En proceso')
+    // La descarga de Ambient Weather es solo para administradores.
+    expect(screen.queryByRole('region', { name: 'Ambient Weather' })).not.toBeInTheDocument()
+    // Validación y Ambient Weather van primero.
+    expect(ir.getAllByRole('button').slice(0, 2).map((b) => b.textContent)).toEqual(['Validación', 'Ambient Weather'])
     await userEvent.click(ir.getByRole('button', { name: /^Ambient Weather/ }))
     expect(p.ir).toHaveBeenCalledWith('ambientweather')
+  })
+
+  it('administrador: a la derecha de la carga de datos, la descarga de Ambient Weather', async () => {
+    modulosActivos(['validacion', 'ambientweather'])
+    render(<Tablero {...props(cliente({}).cliente)} />)
+    const aw = await screen.findByRole('region', { name: 'Ambient Weather' })
+    expect(within(aw).getByText('descarga de ambient')).toBeInTheDocument()
+    const carga = screen.getByRole('region', { name: 'Carga de datos' })
+    expect(carga.parentElement).toBe(aw.parentElement)
+    expect(carga.compareDocumentPosition(aw) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('sin el analisis conectado lo dice', async () => {

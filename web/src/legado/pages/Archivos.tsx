@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertCircle, Check, Eye, FileSpreadsheet, FolderOpen, RefreshCw, Search, Trash2, X,
+  AlertCircle, Check, Eye, FileSpreadsheet, FolderOpen, LayoutGrid, List, RefreshCw, Search, Trash2, X,
 } from 'lucide-react';
 import { archivosApi, type ArchivoGuardado, type VistaArchivo } from '../services/archivos';
 import { useDatos } from '../estado/DatosContexto';
+import { ariaOrden, TituloOrden, useOrden } from '../components/orden';
 
 /**
  * Visor de los Excel y CSV importados en la app de escritorio.
@@ -39,6 +40,14 @@ export default function Archivos({ ir }: { ir: (modulo: string) => void }) {
   const [carpeta, setCarpeta] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [buscar, setBuscar] = useState('');
+  // Cards por defecto; la tabla queda como otra vista. Se recuerda la elegida.
+  const [modo, setModo] = useState<'cards' | 'tabla'>(() => {
+    try { return localStorage.getItem('archivos-vista') === 'tabla' ? 'tabla' : 'cards'; } catch { return 'cards'; }
+  });
+  const cambiarModo = (m: 'cards' | 'tabla') => {
+    setModo(m);
+    try { localStorage.setItem('archivos-vista', m); } catch { /* sin almacenamiento */ }
+  };
   const [vista, setVista] = useState<VistaArchivo | null>(null);
   const [cargandoVista, setCargandoVista] = useState(false);
   const [abierto, setAbierto] = useState<string | null>(null);
@@ -58,10 +67,16 @@ export default function Archivos({ ir }: { ir: (modulo: string) => void }) {
 
   useEffect(() => { refrescar(); }, [refrescar]);
 
-  const visibles = useMemo(() => {
+  const filtrados = useMemo(() => {
     const t = buscar.trim().toLowerCase();
     return (lista ?? []).filter((a) => !t || a.nombre.toLowerCase().includes(t));
   }, [lista, buscar]);
+  const { ordenadas: visibles, orden, alternar } = useOrden(filtrados);
+  const titulo = (clave: string, texto: string, derecha?: boolean) => (
+    <th aria-sort={ariaOrden(orden, clave)} className={`px-4 py-2 font-medium${derecha ? ' text-right' : ''}`}>
+      <TituloOrden clave={clave} orden={orden} alternar={alternar} derecha={derecha}>{texto}</TituloOrden>
+    </th>
+  );
 
   const ver = async (nombre: string, hoja?: string) => {
     setCargandoVista(true);
@@ -90,6 +105,24 @@ export default function Archivos({ ir }: { ir: (modulo: string) => void }) {
       setError(mensaje(e, 'No se pudo borrar el archivo.'));
     }
   };
+
+  const acciones = (nombre: string) => (
+    <>
+      <button type="button" onClick={() => ver(nombre)} aria-label={`Ver ${nombre}`}
+        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50">
+        <Eye size={14} /> Ver
+      </button>
+      <button type="button" onClick={() => abrir(nombre)} disabled={cargando}
+        aria-label={`Abrir ${nombre} en el validador`}
+        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-800 text-slate-900 hover:bg-slate-50 disabled:opacity-50">
+        <FolderOpen size={14} /> {cargando ? 'Abriendo…' : 'Abrir'}
+      </button>
+      <button type="button" onClick={() => borrar(nombre)} aria-label={`Borrar ${nombre}`}
+        className="inline-flex items-center px-2 py-1 rounded-md border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-700 hover:border-red-200">
+        <Trash2 size={14} />
+      </button>
+    </>
+  );
 
   if (!disponible) {
     return (
@@ -151,6 +184,14 @@ export default function Archivos({ ir }: { ir: (modulo: string) => void }) {
               className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
             />
           </label>
+          <div role="tablist" aria-label="Vista" className="flex rounded-lg border border-slate-200 p-0.5">
+            {([['cards', 'Cards', LayoutGrid], ['tabla', 'Tabla', List]] as const).map(([id, texto, Icono]) => (
+              <button key={id} type="button" role="tab" aria-selected={modo === id} onClick={() => cambiarModo(id)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm ${modo === id ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                <Icono size={14} /> {texto}
+              </button>
+            ))}
+          </div>
           <span className="text-xs text-slate-500">
             {(lista ?? []).length} guardados{carpeta && <> · <span className="font-mono">{carpeta}</span></>}
           </span>
@@ -163,20 +204,39 @@ export default function Archivos({ ir }: { ir: (modulo: string) => void }) {
             <FileSpreadsheet className="w-10 h-10 mx-auto text-slate-300 mb-3" />
             <p className="text-slate-700 font-medium">Todavía no hay archivos guardados.</p>
             <p className="text-sm text-slate-500 mt-1">
-              Importa un Excel o CSV desde Validación → Consultar datos y aparecerá aquí.
+              Importa un Excel o CSV desde el Tablero → Carga de datos → Consultar datos y aparecerá aquí.
             </p>
           </div>
         ) : visibles.length === 0 ? (
           <p className="p-6 text-sm text-slate-500">Ningún archivo coincide con «{buscar}».</p>
+        ) : modo === 'cards' ? (
+          <ul className="p-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="Archivos guardados">
+            {visibles.map((a) => (
+              <li key={a.nombre}
+                className={`rounded-xl border p-4 flex flex-col gap-3 ${vista?.nombre === a.nombre ? 'border-slate-800 bg-slate-50' : 'border-slate-200'}`}>
+                <div className="flex items-start gap-3 min-w-0">
+                  <FileSpreadsheet className="w-8 h-8 text-green-600 shrink-0" aria-hidden="true" />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-800 break-all leading-snug">{a.nombre}</p>
+                    <span className={`inline-block mt-1 px-2 py-0.5 rounded border text-xs ${TIPO[a.tipo].clase}`}>
+                      {TIPO[a.tipo].texto}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-500">{tamano(a.tamano)} · {fecha(a.modificado)}</p>
+                <div className="flex gap-1.5 mt-auto">{acciones(a.nombre)}</div>
+              </li>
+            ))}
+          </ul>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
-                  <th className="px-4 py-2 font-medium">Archivo</th>
-                  <th className="px-4 py-2 font-medium">Tipo</th>
-                  <th className="px-4 py-2 font-medium text-right">Tamaño</th>
-                  <th className="px-4 py-2 font-medium">Guardado</th>
+                  {titulo('nombre', 'Archivo')}
+                  {titulo('tipo', 'Tipo')}
+                  {titulo('tamano', 'Tamaño', true)}
+                  {titulo('modificado', 'Guardado')}
                   <th className="px-4 py-2 font-medium text-right">Acciones</th>
                 </tr>
               </thead>
@@ -192,21 +252,7 @@ export default function Archivos({ ir }: { ir: (modulo: string) => void }) {
                     <td className="px-4 py-2 text-right tabular-nums text-slate-600">{tamano(a.tamano)}</td>
                     <td className="px-4 py-2 text-slate-600 whitespace-nowrap">{fecha(a.modificado)}</td>
                     <td className="px-4 py-2">
-                      <div className="flex justify-end gap-1.5">
-                        <button type="button" onClick={() => ver(a.nombre)} aria-label={`Ver ${a.nombre}`}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50">
-                          <Eye size={14} /> Ver
-                        </button>
-                        <button type="button" onClick={() => abrir(a.nombre)} disabled={cargando}
-                          aria-label={`Abrir ${a.nombre} en el validador`}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-800 text-slate-900 hover:bg-slate-50 disabled:opacity-50">
-                          <FolderOpen size={14} /> {cargando ? 'Abriendo…' : 'Abrir'}
-                        </button>
-                        <button type="button" onClick={() => borrar(a.nombre)} aria-label={`Borrar ${a.nombre}`}
-                          className="inline-flex items-center px-2 py-1 rounded-md border border-slate-200 text-slate-500 hover:bg-red-50 hover:text-red-700 hover:border-red-200">
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+                      <div className="flex justify-end gap-1.5">{acciones(a.nombre)}</div>
                     </td>
                   </tr>
                 ))}

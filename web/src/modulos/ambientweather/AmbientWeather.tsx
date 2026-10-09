@@ -9,6 +9,7 @@ import {
   type Dispositivo, type EstadoSondeo, type Lectura,
 } from './datos'
 import { Tabla } from './Tabla'
+import { Historico } from './Historico'
 
 // La API publica cada minuto; preguntar mas seguido no trae nada nuevo.
 const CADA_MS = 60_000
@@ -195,7 +196,7 @@ function Detalle({ api, d, todos, ahora, admin, estado, alPedir }: {
 
       <Grafica api={api} d={d} todos={todos} ahora={ahora} />
       <Tabla api={api} d={d} ahora={ahora} />
-      {admin && <Historico api={api} d={d} estado={estado} alPedir={alPedir} />}
+      {admin && <Historico api={api} d={d} todos={todos} estado={estado} alPedir={alPedir} />}
     </section>
   )
 }
@@ -333,63 +334,6 @@ function Grafica({ api, d, todos, ahora }: { api: Cliente; d: Dispositivo; todos
         <p className="cap" style={{ margin: '6px 0 0' }}>
           Hasta {fechaHora(new Date(hasta).toISOString())}
           {cubeta > 0 && ` · cada punto resume ${cubeta >= 3600 ? `${cubeta / 3600} h` : `${cubeta / 60} min`} (promedio; máximo en acumulados de lluvia)`}
-        </p>
-      )}
-    </div>
-  )
-}
-
-function Historico({ api, d, estado, alPedir }: {
-  api: Cliente; d: Dispositivo; estado: EstadoSondeo | null; alPedir: (e: EstadoSondeo) => void
-}) {
-  const [dias, setDias] = useState(30)
-  const [todas, setTodas] = useState(false)
-  const [error, setError] = useState('')
-  const desc = estado?.descarga
-  const corriendo = desc?.estado === 'descargando'
-
-  const pedir = async () => {
-    setError('')
-    try {
-      alPedir(await api.post<EstadoSondeo>('/api/ambient-weather/historico', { mac: todas ? '' : d.mac, dias }))
-    } catch (e) {
-      setError((e as Error).message)
-    }
-  }
-
-  return (
-    <div className="seccion" style={{ marginBottom: 0 }}>
-      <h3 className="h2">Descargar histórico</h3>
-      <p className="cap" style={{ marginTop: -4 }}>
-        Trae de Ambient Weather lo que falte hacia atrás. Lo repetido se ignora. Ambient Weather admite una
-        petición por segundo: un año de una estación tarda unos 7 minutos.
-      </p>
-      {!estado?.llaves ? (
-        <div className="aviso">Hace falta configurar las llaves de Ambient Weather en la API.</div>
-      ) : (
-        <div className="aw-controles">
-          <label className="campo aw-select">
-            <select value={dias} onChange={(e) => setDias(Number(e.target.value))} aria-label="Días hacia atrás" disabled={corriendo}>
-              {[7, 30, 90, 180, 365].map((n) => <option key={n} value={n}>Últimos {n} días</option>)}
-            </select>
-          </label>
-          <label className="aw-check">
-            <input type="checkbox" checked={todas} onChange={(e) => setTodas(e.target.checked)} disabled={corriendo} />
-            Todas las estaciones
-          </label>
-          <button type="button" className="boton primario" onClick={pedir} disabled={corriendo}>
-            {corriendo ? 'Descargando…' : 'Descargar'}
-          </button>
-        </div>
-      )}
-      {error && <div className="aviso-error" style={{ marginTop: 10 }}>{error}</div>}
-      {desc && (
-        <p className="cap" style={{ marginTop: 10 }}>
-          {desc.estado === 'descargando' ? 'Descargando' : desc.estado === 'terminada' ? 'Terminó' : 'Falló'}{' '}
-          {nombreCorto(desc)} ({desc.dias} días): {desc.recibidas.toLocaleString('es-MX')} recibidas,{' '}
-          {desc.nuevas.toLocaleString('es-MX')} nuevas
-          {desc.llegoA && `, hasta ${fechaHora(desc.llegoA)}`}
-          {desc.error && ` — ${desc.error}`}
         </p>
       )}
     </div>

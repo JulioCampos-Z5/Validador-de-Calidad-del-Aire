@@ -82,3 +82,36 @@ describe('CSV', () => {
     ])
   })
 })
+
+describe('avance de la descarga', () => {
+  const inicio = '2026-10-09T12:00:00Z'
+  const desc = (llegoA: string | null, estado: 'descargando' | 'terminada' | 'error' = 'descargando', mac = 'B') => ({
+    mac, nombre: mac, dias: 10, estado, recibidas: 0, nuevas: 0, llegoA, inicio, fin: null,
+  })
+  const t0 = new Date(inicio).getTime()
+
+  it('una estacion: lo cubierto del tramo y cuanto falta al mismo ritmo', async () => {
+    const { avanceDescarga, duracion } = await import('./datos')
+    const a = avanceDescarga(desc('2026-10-04T12:00:00Z'), null, t0 + 60_000)
+    expect(a.estacion).toBeCloseTo(0.5)
+    expect(a.total).toBeCloseTo(0.5)
+    expect(a.faltaMs).toBe(60_000)
+    expect(avanceDescarga(desc(null), null, t0).faltaMs).toBeNull()
+    expect(avanceDescarga(desc('2026-10-08T12:00:00Z', 'terminada'), null, t0).estacion).toBe(1)
+    expect(duracion(30_000)).toBe('menos de un minuto')
+    expect(duracion(4 * 60_000)).toBe('unos 4 min')
+    expect(duracion(80 * 60_000)).toBe('unas 1 h 20 min')
+  })
+
+  it('todas las estaciones: suma las que faltan de la cola', async () => {
+    const { avanceDescarga } = await import('./datos')
+    const a = avanceDescarga(desc('2026-10-04T12:00:00Z'), ['A', 'B', 'C'], t0 + 60_000)
+    expect(a.hechas).toBe(1)
+    expect(a.estaciones).toBe(3)
+    expect(a.total).toBeCloseTo(0.5)
+    expect(a.faltaMs).toBe(60_000 + 120_000)
+    const fin = avanceDescarga(desc('2026-10-04T12:00:00Z', 'terminada', 'C'), ['A', 'B', 'C'], t0)
+    expect(fin.total).toBe(1)
+    expect(fin.faltaMs).toBe(0)
+  })
+})

@@ -5,7 +5,7 @@ import { useDatos } from '../estado/DatosContexto';
 import { historicoApi } from '../services/historico';
 import {
   rejillaHoraria, serieEnRejilla, agregadoZona,
-  promedioPorHoraDelDia, numero, parametroInicial, type Registro,
+  promedioPorHoraDelDia, bloquesMesHora, numero, parametroInicial, type Registro,
 } from '../graficas/series';
 import {
   CONTAMINANTES, METEOROLOGICOS, COLORES_ESTACIONES,
@@ -27,6 +27,11 @@ import {
  * contra la velocidad del viento, explican en una sola imagen por qué la curva
  * tiene la forma que tiene.
  *
+ * «Todos los días» es la gráfica de Excel del laboratorio: un bloque por mes
+ * con las horas de 0 a 23 y, en cada hora, los valores de todos los días del
+ * mes uno tras otro. Así se compara un día con otro a la misma hora, y un mes
+ * con otro.
+ *
  * Las horas sin dato no cuentan. Un promedio hecho con tres valores y otro
  * hecho con treinta se dibujan igual, así que la cuenta va en el hover: sin
  * ella, un pico que solo existe porque esa hora casi no se midió pasa por real.
@@ -44,6 +49,9 @@ const AMG_MAXIMO = '__amg_maximo';
 
 const COLOR_PRINCIPAL = '#2563eb';
 const COLOR_CRUCE = '#ea580c';
+
+
+type Vista = 'promedio' | 'todos';
 
 /** Un periodo a comparar: fechas `AAAA-MM-DD`, ambas incluidas. */
 interface Periodo { desde: string; hasta: string }
@@ -99,6 +107,7 @@ export default function PerfilHorario({ data }: Props) {
   const [ambito, setAmbito] = useState<string>(AMG_PROMEDIO);
   const [parametro, setParametro] = useState(() => parametroInicial(data, [...CONTAMINANTES, ...METEOROLOGICOS]));
   const [cruce, setCruce] = useState<string>(NINGUNO);
+  const [vista, setVista] = useState<Vista>('promedio');
 
   // Comparación de periodos: el mismo perfil, una curva por rango de fechas.
   // Sirve para ver si un fin de semana, una contingencia o un mes se comporta
@@ -199,6 +208,18 @@ export default function PerfilHorario({ data }: Props) {
 
   const { principal, secundario } = perfiles;
 
+  // «Todos los días», como la gráfica de Excel del laboratorio: un bloque por
+  // mes, de 0 a 23 h, y en cada hora los días del mes uno tras otro (las
+  // líneas verticales). Al comparar periodos no aplica.
+  const diaADia = vista === 'todos' && !comparar;
+  const dias = useMemo(() => {
+    if (!diaADia || !rejilla.length) return null;
+    return {
+      principal: bloquesMesHora(rejilla, serie(parametro)),
+      cruce: cruce ? bloquesMesHora(rejilla, serie(cruce)) : null,
+    };
+  }, [diaADia, rejilla, serie, parametro, cruce]);
+
   /** El perfil de `param` en cada periodo; null mientras se lee de la base. */
   const perfilesPorPeriodo = useCallback((param: string) => {
     const completa = serie(param);
@@ -293,7 +314,7 @@ export default function PerfilHorario({ data }: Props) {
       hovertemplate:
         `${etiquetaPeriodo(periodos[i])}: %{y:.4g} ${unidad(parametro)}`
         + ' (%{customdata} valores)<extra></extra>',
-    }]) : [{
+    }]) : dias ? [] : [{
       type: 'scatter',
       mode: 'lines+markers',
       name: `${parametro} · ${nombreAmbito}`,
@@ -331,7 +352,34 @@ export default function PerfilHorario({ data }: Props) {
       });
     }
 
-    if (!comparar && secundario && cruce && hayCruce) {
+    if (dias) {
+      trazos.push({
+        type: 'scatter',
+        mode: 'lines',
+        name: `${parametro} · ${nombreAmbito}`,
+        x: dias.principal.x,
+        y: dias.principal.y,
+        line: { color: colorPrincipal, width: 1 },
+        customdata: dias.principal.fechas,
+        hovertemplate: `%{customdata}<br>${parametro} = %{y:.4g} ${unidad(parametro)}<extra></extra>`,
+      });
+      if (dias.cruce && cruce && hayCruce) {
+        trazos.push({
+          type: 'scatter',
+          mode: 'lines',
+          name: `${cruce} · ${nombreAmbito}`,
+          x: dias.cruce.x,
+          y: dias.cruce.y,
+          yaxis: 'y2',
+          line: { color: COLOR_CRUCE, width: 1 },
+          opacity: 0.7,
+          customdata: dias.cruce.fechas,
+          hovertemplate: `%{customdata}<br>${cruce} = %{y:.4g} ${unidad(cruce)}<extra></extra>`,
+        });
+      }
+    }
+
+    if (!comparar && !dias && secundario && cruce && hayCruce) {
       trazos.push({
         type: 'scatter',
         mode: 'lines+markers',
@@ -370,6 +418,31 @@ export default function PerfilHorario({ data }: Props) {
       paper_bgcolor: '#ffffff',
     };
 
+    if (dias) {
+      // Eje con la hora debajo de cada tramo (cada 3 h si hay muchos meses) y
+      // el nombre del mes arriba de su bloque.
+      const { meses } = dias.principal;
+      const paso = meses.length > 4 ? 3 : 1;
+      const tickvals: number[] = [];
+      const ticktext: string[] = [];
+      meses.forEach(m => {
+        for (let h = 0; h < 24; h += paso) { tickvals.push(m.inicio + h + 0.45); ticktext.push(String(h)); }
+      });
+      disposicion.xaxis = {
+        title: { text: 'Hora del día (en cada hora, los días del mes)' },
+        range: [-0.5, meses.length * 24],
+        tickmode: 'array', tickvals, ticktext, tickangle: 0,
+        showgrid: false, zeroline: false,
+      };
+      disposicion.annotations = meses.map(m => ({
+        x: m.inicio + 12, y: 1, xref: 'x', yref: 'paper', yanchor: 'bottom',
+        text: m.etiqueta, showarrow: false, font: { size: 12 },
+      }));
+      disposicion.hovermode = 'closest';
+      disposicion.showlegend = !!(dias.cruce && hayCruce);
+      disposicion.margin = { ...disposicion.margin, t: 30 };
+    }
+
     if (hayCruce && cruce) {
       disposicion.yaxis2 = {
         title: { text: `${cruce}${unidad(cruce) ? ` [${unidad(cruce)}]` : ''}` },
@@ -386,7 +459,7 @@ export default function PerfilHorario({ data }: Props) {
       responsive: true, displayModeBar: true,
     });
   }, [horas, principal, secundario, parametro, cruce, hayCruce, nombreAmbito, colorPrincipal, hayDatos,
-      comparar, comparados, comparadosCruce, periodos]);
+      comparar, comparados, comparadosCruce, periodos, dias]);
 
   const selector = 'border border-gray-300 rounded-md px-2 py-1 text-sm bg-white '
     + 'focus:outline-none focus:ring-1 focus:ring-blue-400';
@@ -415,7 +488,9 @@ export default function PerfilHorario({ data }: Props) {
         <div>
           <h3 className="font-semibold text-gray-800">Comportamiento horario</h3>
           <p className="text-sm text-gray-500">
-            Promedio de cada hora del día en todo el periodo cargado.
+            {diaADia
+              ? 'Un bloque por mes, de 0 a 23 h; en cada hora, los valores de todos los días del mes.'
+              : 'Promedio de cada hora del día en todo el periodo cargado.'}
           </p>
         </div>
       </div>
@@ -466,6 +541,28 @@ export default function PerfilHorario({ data }: Props) {
               : 'Segundo contaminante en el eje derecho, con su propia escala.'}
           </p>
         )}
+
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-gray-600">Mostrar</span>
+          <div role="tablist" aria-label="Mostrar" className="flex rounded-md border border-gray-300 p-0.5 text-sm">
+            {([['promedio', 'Promedio'], ['todos', 'Todos los días']] as const).map(([id, texto]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={vista === id}
+                disabled={comparar && id === 'todos'}
+                title={comparar && id === 'todos' ? 'No disponible al comparar fechas' : undefined}
+                onClick={() => setVista(id)}
+                className={`px-2.5 py-0.5 rounded transition-colors disabled:opacity-40 ${
+                  vista === id && !(comparar && id === 'todos') ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {texto}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <button
           onClick={activarComparacion}
@@ -559,6 +656,7 @@ export default function PerfilHorario({ data }: Props) {
           </span>
         </p>
       )}
+
 
       {hayDatos ? (
         <div ref={grafica} style={{ width: '100%', minHeight: '420px' }} />

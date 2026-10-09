@@ -15,16 +15,16 @@ y Admin. Estaciones e Inventario salen «en proceso» (necesitan el servidor).
 ## Generar el instalador
 
 Requiere Go, Python con `pip install -r backend/requirements.txt pyinstaller`
-y pnpm.
+y pnpm. Los comandos van desde la raíz del repo.
 
 ```bash
-pnpm --dir escritorio-v2 exe
+pnpm instalador
 ```
 
 Deja `salida-v2/Validador-v2-instalador.exe`. Para probar sin instalar:
 
 ```bash
-pnpm --dir escritorio-v2 dev
+pnpm escritorio
 ```
 
 (En desarrollo el motor corre con el Python del sistema.)

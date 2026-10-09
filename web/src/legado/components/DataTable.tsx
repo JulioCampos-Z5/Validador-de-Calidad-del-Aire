@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { ariaOrden, TituloOrden, useOrden } from './orden';
 
 interface DataTableProps {
   data: Record<string, any>[];
@@ -47,6 +48,9 @@ export default function DataTable({ data, columns, maxRows = 50, showAll = false
   const [currentPage, setCurrentPage] = useState(0);
   const [showLegend, setShowLegend] = useState(false);
   const rowsPerPage = showAll ? 100 : maxRows;
+  // Se ordena todo el conjunto, no solo la página visible.
+  const { ordenadas, orden, alternar } = useOrden(data ?? []);
+  const ordenarPor = (columna: string) => { alternar(columna); setCurrentPage(0); };
 
   if (!data || data.length === 0) {
     return (
@@ -86,7 +90,7 @@ export default function DataTable({ data, columns, maxRows = 50, showAll = false
   const totalPages = Math.ceil(data.length / rowsPerPage);
   const startIndex = currentPage * rowsPerPage;
   const endIndex = Math.min(startIndex + rowsPerPage, data.length);
-  const displayData = data.slice(startIndex, endIndex);
+  const displayData = ordenadas.slice(startIndex, endIndex);
 
   const getCellClass = (value: any, column: string) => {
     if (typeof value === 'string') {
@@ -282,11 +286,12 @@ export default function DataTable({ data, columns, maxRows = 50, showAll = false
               {displayColumns.map((column) => (
                 <th
                   key={column}
+                  aria-sort={ariaOrden(orden, column)}
                   className={`px-3 py-3 text-center text-xs font-bold uppercase tracking-wider whitespace-nowrap sticky top-0 ${
                     HEADER_COLORS[column] || 'bg-slate-600 text-white'
                   }`}
                 >
-                  {column}
+                  <TituloOrden clave={column} orden={orden} alternar={ordenarPor}>{column}</TituloOrden>
                 </th>
               ))}
             </tr>

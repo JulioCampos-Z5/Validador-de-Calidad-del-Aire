@@ -142,3 +142,18 @@ describe('constantes', () => {
     expect(umbralesEscala('O3', 'aire-salud')).toEqual(umbralesIndice('O3'))
   })
 })
+
+describe('bloquesMesHora', () => {
+  it('un bloque por mes; dentro, hora por hora y en cada hora los dias en orden', async () => {
+    const { bloquesMesHora } = await import('./series')
+    const rejilla = ['2026-01-02T08:00:00', '2026-01-01T08:00:00', '2026-01-01T09:00:00', '2026-02-01T00:00:00', '2026-02-03T00:00:00']
+    const b = bloquesMesHora(rejilla, [2, 1, 5, 7, null])
+    expect(b.y).toEqual([1, 2, 5, 7])
+    expect(b.x[0]).toBe(8)
+    expect(b.x[1]).toBeCloseTo(8 + 0.9 / 31)
+    expect(b.x[2]).toBe(9)
+    expect(b.x[3]).toBe(24)
+    expect(b.meses).toEqual([{ etiqueta: 'ene 2026', inicio: 0 }, { etiqueta: 'feb 2026', inicio: 24 }])
+    expect(b.fechas[0]).toBe('2026-01-01 08:00')
+  })
+})

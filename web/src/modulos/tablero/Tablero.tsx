@@ -6,6 +6,9 @@ import { esEscritorio } from '../../compartido/escritorio'
 import type { PropsModulo } from '../../compartido/modulo'
 import type { EstadoEstacion, EventoPuerto } from '../../compartido/tipos'
 import { fechaHora } from '../../compartido/tiempo'
+import OrigenDatos from '../../legado/components/OrigenDatos'
+import { DescargaAmbient } from '../ambientweather/Descarga'
+import { esAdmin } from '../../compartido/modulo'
 
 interface Equipo { estatus: string; idEstacion: number | null }
 
@@ -59,7 +62,13 @@ export function Tablero({ api, usuario, datos, ir }: PropsModulo) {
 
   const r = datos?.respuesta
   // Accesos a las vistas: las que ve este rol, menos el propio Tablero.
+  // Validación (la carga de datos) y Ambient Weather van primero.
+  const PRIMERO = ['validacion', 'ambientweather']
   const accesos = visiblesPara(usuario.rol, escritorio).filter((m) => m.id !== 'tablero')
+    .sort((a, b) => (PRIMERO.includes(b.id) ? 1 : 0) - (PRIMERO.includes(a.id) ? 1 : 0)
+      || PRIMERO.indexOf(a.id) - PRIMERO.indexOf(b.id))
+
+  const conAmbient = !!activos?.has('ambientweather') && esAdmin(usuario)
 
   return (
     <div className="pagina">
@@ -69,6 +78,60 @@ export function Tablero({ api, usuario, datos, ir }: PropsModulo) {
           <div className="cap" style={{ marginTop: 2 }}>Resumen del validador</div>
         </div>
       </header>
+
+      <Bloque titulo="Datos cargados" accion={datos ? 'Ver gráficas' : undefined} alPulsar={() => ir('graficas')}
+        deshabilitado={!activos?.has('validacion')}>
+        {!activos?.has('validacion') ? <p className="cap">El análisis (Python) no está conectado.</p> : r ? (
+          <>
+            <div style={{ fontWeight: 600 }}>{datos!.origen}</div>
+            <div className="cap" style={{ marginBottom: 10 }}>Cargado {fechaHora(datos!.cargado)}</div>
+            <div className="numeros" style={{ marginBottom: 0 }}>
+              <Numero etq="Registros" valor={r.summary.total_registros.toLocaleString('es-MX')} />
+              <Numero etq="Estaciones" valor={r.summary.estaciones} />
+            </div>
+          </>
+        ) : <p className="cap" style={{ fontSize: 13 }}>Todavía no hay un periodo cargado. Usa «Consultar datos» en Carga de datos.</p>}
+      </Bloque>
+
+      <section className="seccion" aria-labelledby="accesos-titulo">
+        <h2 id="accesos-titulo" className="subtitulo">Ir a</h2>
+        <div className="accesos">
+          {accesos.map((m) => {
+            const ok = activos !== null && disponible(m, activos)
+            const Ico = m.icono
+            return (
+              <button key={m.id} type="button" className="acceso" disabled={!ok}
+                onClick={() => ir(m.id)} title={ok ? m.nombre : `${m.nombre} · en proceso`}>
+                <Ico size={20} stroke={1.7} aria-hidden="true" />
+                <span>{m.nombre}</span>
+                {!ok && activos !== null && <span className="cap">En proceso</span>}
+              </button>
+            )
+          })}
+        </div>
+      </section>
+
+      {/* La carga de datos: el mismo panel de Validación, para traer un
+          periodo sin salir del Tablero (sin el análisis conectado no hay qué
+          cargar). Lo cargado se resume arriba, en «Datos cargados». */}
+      {(activos?.has('validacion') || conAmbient) && (
+        <div className="tablero-cargas">
+          {activos?.has('validacion') && (
+            <section className="panel" aria-label="Carga de datos" style={{ marginBottom: 0 }}>
+              <h2 className="h2" style={{ margin: '0 0 12px' }}>Carga de datos</h2>
+              <OrigenDatos ir={ir} enTarjeta />
+            </section>
+          )}
+          {/* A la derecha, la descarga de histórico de Ambient Weather (solo
+              administradores, como en su módulo). */}
+          {conAmbient && (
+            <section className="panel" aria-label="Ambient Weather" style={{ marginBottom: 0 }}>
+              <h2 className="h2" style={{ margin: '0 0 4px' }}>Ambient Weather</h2>
+              <DescargaAmbient api={api} />
+            </section>
+          )}
+        </div>
+      )}
 
       {activos?.has('puertos') && (
         <Bloque titulo="Red de monitoreo" accion="Ver estaciones" alPulsar={() => ir('estaciones')}>
@@ -82,20 +145,6 @@ export function Tablero({ api, usuario, datos, ir }: PropsModulo) {
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
-        <Bloque titulo="Datos cargados" accion={datos ? 'Ver gráficas' : 'Cargar datos'} alPulsar={() => ir(datos ? 'graficas' : 'validacion')}
-          deshabilitado={!activos?.has('validacion')}>
-          {!activos?.has('validacion') ? <p className="cap">El análisis (Python) no está conectado.</p> : r ? (
-            <>
-              <div style={{ fontWeight: 600 }}>{datos!.origen}</div>
-              <div className="cap" style={{ marginBottom: 10 }}>Cargado {fechaHora(datos!.cargado)}</div>
-              <div className="numeros" style={{ marginBottom: 0 }}>
-                <Numero etq="Registros" valor={r.summary.total_registros.toLocaleString('es-MX')} />
-                <Numero etq="Estaciones" valor={r.summary.estaciones} />
-              </div>
-            </>
-          ) : <p className="cap" style={{ fontSize: 13 }}>Todavía no hay un periodo cargado en esta sesión.</p>}
-        </Bloque>
-
         {activos?.has('puertos') && (
           <Bloque titulo="Últimos avisos de las estaciones">
             {eventos.length === 0 ? <p className="cap">Sin avisos recientes.</p> : (
@@ -128,23 +177,6 @@ export function Tablero({ api, usuario, datos, ir }: PropsModulo) {
         )}
       </div>
 
-      <section className="seccion" aria-labelledby="accesos-titulo">
-        <h2 id="accesos-titulo" className="subtitulo">Ir a</h2>
-        <div className="accesos">
-          {accesos.map((m) => {
-            const ok = activos !== null && disponible(m, activos)
-            const Ico = m.icono
-            return (
-              <button key={m.id} type="button" className="acceso" disabled={!ok}
-                onClick={() => ir(m.id)} title={ok ? m.nombre : `${m.nombre} · en proceso`}>
-                <Ico size={20} stroke={1.7} aria-hidden="true" />
-                <span>{m.nombre}</span>
-                {!ok && activos !== null && <span className="cap">En proceso</span>}
-              </button>
-            )
-          })}
-        </div>
-      </section>
     </div>
   )
 }

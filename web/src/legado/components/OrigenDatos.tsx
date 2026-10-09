@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   RefreshCw, X, ChevronDown, FileDown, Table2,
   Upload, FileInput, DownloadCloud, Radio, FolderKanban, Database, HardDriveDownload,
-  Gauge, Clock3,
+  Gauge, Clock3, Files,
 } from 'lucide-react';
 import { iasApi } from '../services/ias';
 import { useDatos, type Origen } from '../estado/DatosContexto';
@@ -67,7 +67,11 @@ const ORIGENES: {
 ];
 
 
-export default function OrigenDatos() {
+export default function OrigenDatos({ ir, enTarjeta = false }: {
+  ir?: (modulo: string) => void;
+  /** Dentro de una card (Tablero): sin la línea de arriba ni el margen del menú. */
+  enTarjeta?: boolean;
+} = {}) {
   const {
     cargando, descripcion, error, limpiar, resultado, mir, contaminantesMir, comoCeroMir,
     progresoSimaj, historicoDisponible,
@@ -191,6 +195,23 @@ export default function OrigenDatos() {
     </button>
   ) : null;
 
+  // Los Excel y CSV importados quedan guardados (solo escritorio): acceso
+  // directo al visor, que también está en la barra de módulos.
+  const archivos = historicoDisponible && ir ? (
+    <button
+      type="button"
+      onClick={() => ir('archivos')}
+      title="Archivos guardados: los Excel y CSV que has importado"
+      aria-label="Archivos guardados"
+      className={plegado
+        ? clasesIcono()
+        : 'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-slate-600 hover:bg-slate-100 transition-colors'}
+    >
+      <Files size={plegado ? 20 : 17} className="shrink-0" />
+      {!plegado && <span className="text-sm font-medium">Archivos guardados</span>}
+    </button>
+  ) : null;
+
   if (plegado) {
     // Plegada se ven todos los iconos: el periodo, el de traer datos y las
     // exportaciones disponibles. Un icono que desaparece al plegar es una
@@ -214,6 +235,7 @@ export default function OrigenDatos() {
 
         {exportaciones}
         {baseLocal}
+        {archivos}
 
         {descripcion && !cargando && (
           <span
@@ -229,8 +251,8 @@ export default function OrigenDatos() {
   }
 
   return (
-    <div className="border-t border-slate-200 pt-3">
-      <div className="px-3 pb-2 space-y-1">
+    <div className={enTarjeta ? undefined : 'border-t border-slate-200 pt-3'}>
+      <div className={enTarjeta ? 'space-y-1' : 'px-3 pb-2 space-y-1'}>
         <div ref={caja}>
           <button
             type="button"
@@ -337,6 +359,7 @@ export default function OrigenDatos() {
 
       {exportaciones}
       {baseLocal}
+      {archivos}
       </div>
 
       {dialogo}

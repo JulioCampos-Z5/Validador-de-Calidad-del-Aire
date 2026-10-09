@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { iasApi, type FilaMide, type Mide } from '../services/ias';
 import { useDatos } from '../estado/DatosContexto';
+import { ariaOrden, TituloOrden, useOrden } from './orden';
 
 /**
  * Las dos hojas MIDE del Excel diario (backend/ias/calculo.py): cuántos días
@@ -24,19 +25,38 @@ function pedir(clave: unknown) {
   return enCurso.promesa;
 }
 
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
+  'septiembre', 'octubre', 'noviembre', 'diciembre'];
+// El mes se ordena por calendario, no por orden alfabético.
+const valorMide = (f: FilaMide, clave: string) => {
+  if (clave !== 'MES') return f[clave as keyof FilaMide];
+  const i = MESES.indexOf(String(f.MES).toLowerCase());
+  return i < 0 ? f.MES : i;
+};
+
 function Tabla({ filas, conMunicipio }: { filas: FilaMide[]; conMunicipio?: boolean }) {
+  // Las filas TOTAL se quedan al final, ordene como se ordene.
+  const totales = useMemo(() => filas.filter(f => f.MES === 'TOTAL'), [filas]);
+  const meses = useMemo(() => filas.filter(f => f.MES !== 'TOTAL'), [filas]);
+  const { ordenadas, orden, alternar } = useOrden(meses, valorMide);
+  const vistas = orden ? [...ordenadas, ...totales] : filas;
+  const titulo = (clave: string, texto: string, derecha?: boolean) => (
+    <th key={clave} aria-sort={ariaOrden(orden, clave)} className={`px-4 py-2 font-medium${derecha ? ' text-right' : ''}`}>
+      <TituloOrden clave={clave} orden={orden} alternar={alternar} derecha={derecha}>{texto}</TituloOrden>
+    </th>
+  );
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
-            {conMunicipio && <th className="px-4 py-2 font-medium">Municipio</th>}
-            <th className="px-4 py-2 font-medium">Mes</th>
-            {COLUMNAS.map(c => <th key={c.clave} className="px-4 py-2 font-medium text-right">{c.etiqueta}</th>)}
+            {conMunicipio && titulo('MUNICIPIO', 'Municipio')}
+            {titulo('MES', 'Mes')}
+            {COLUMNAS.map(c => titulo(c.clave, c.etiqueta, true))}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {filas.map((f, i) => {
+          {vistas.map((f, i) => {
             const total = f.MES === 'TOTAL';
             return (
               <tr key={i} className={total ? 'bg-slate-50 font-semibold text-slate-800' : 'text-slate-700'}>
@@ -110,8 +130,7 @@ export default function TablaMide({ hoja }: { hoja: 'amg' | 'municipios' }) {
           {amg ? 'MIDE · Área Metropolitana de Guadalajara' : 'MIDE por municipio'}
         </h2>
         <p className="text-sm text-slate-500 mt-0.5">
-          Días con índice Aire y Salud en Buena o Aceptable, por mes. Las mismas hojas
-          «{amg ? 'MIDE' : 'MIDE-municipio'}» del Excel diario.
+          Días con índice Aire y Salud en Buena o Aceptable, por mes.
         </p>
         {!amg && municipios.length > 1 && (
           <div className="flex flex-wrap gap-1.5 mt-3">

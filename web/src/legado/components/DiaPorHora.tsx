@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Grid3x3 } from 'lucide-react';
 import type { Registro } from '../graficas/series';
 import {
@@ -34,15 +34,6 @@ function Muestra({ cat, className = 'w-3 h-3' }: { cat: number | null; className
   );
 }
 
-function Pastilla({ cat }: { cat: number }) {
-  const c = CATEGORIAS[cat];
-  return (
-    <span className="rounded-full px-2.5 py-0.5 text-xs font-medium" style={{ background: c.color, color: c.texto }}>
-      {c.nombre}
-    </span>
-  );
-}
-
 function fmt(v: number | null, p: string) {
   if (v === null) return '—';
   return ['O3', 'NO2', 'SO2'].includes(p) ? v.toFixed(3) : p === 'CO' ? v.toFixed(2) : String(v);
@@ -65,17 +56,6 @@ export default function DiaPorHora({ data }: { data: Registro[] }) {
   const [vista, setVista] = useState<Vista>('rejilla');
   const [elegido, setElegido] = useState<string | null>(null);
   useEffect(() => { setElegido(null); }, [mes, sel.estacion]);
-
-  const resumen = useMemo(() => {
-    const conDiaria = dias.filter(d => d.diaria?.cat != null);
-    const conPeores = conDiaria.filter(d => d.horasPeores > 0);
-    return {
-      total: conDiaria.length,
-      conPeores: conPeores.length,
-      horas: conPeores.reduce((s, d) => s + d.horasPeores, 0),
-      top: [...conPeores].sort((a, b) => b.horasPeores - a.horasPeores).slice(0, 3),
-    };
-  }, [dias]);
 
   const hayDatos = dias.some(d => d.peorHora !== null || d.diaria?.cat != null);
   const diaElegido = dias.find(d => d.fecha === elegido) ?? null;
@@ -131,56 +111,15 @@ export default function DiaPorHora({ data }: { data: Registro[] }) {
           No hay contaminantes criterio suficientes en {sel.estacion} para calcular categorías.
         </p>
       ) : (
-        <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
+        <div className={diaElegido ? 'grid gap-4 xl:grid-cols-[1fr_340px]' : ''}>
           <div className="rounded-lg border border-gray-200 p-4 overflow-x-auto">
             {vista === 'rejilla'
               ? <Rejilla dias={dias} elegido={elegido} onElegir={setElegido} />
               : <Calendario dias={dias} mes={mes} elegido={elegido} onElegir={setElegido} />}
+            {!diaElegido && <p className="mt-3 text-xs text-gray-500">Toca un día para ver sus indicadores hora por hora.</p>}
           </div>
 
-          <div className="space-y-4">
-            <div className="rounded-lg border border-gray-200 p-5 text-sm text-gray-700">
-              <p className="text-xs font-semibold tracking-widest uppercase text-gray-500">
-                Lo que se pierde al resumir el día
-              </p>
-              <p className="mt-3 text-2xl leading-snug text-gray-900">
-                {resumen.conPeores} de {resumen.total} días tuvieron horas peores que su categoría diaria
-              </p>
-              <p className="mt-3">
-                En total, <b className="text-gray-900">{resumen.horas} horas</b> quedaron por encima de la
-                categoría del día.
-              </p>
-              {resumen.top.length > 0 && (
-                <>
-                  <p className="mt-4 pt-4 border-t border-gray-200 text-xs font-semibold tracking-widest uppercase text-gray-500">
-                    Días con más horas peores
-                  </p>
-                  <ul className="mt-3 space-y-2">
-                    {resumen.top.map(d => (
-                      <li key={d.fecha}>
-                        <button
-                          type="button"
-                          onClick={() => setElegido(d.fecha)}
-                          className="w-full flex items-center gap-2 text-left hover:bg-gray-50 rounded px-1 py-0.5"
-                        >
-                          <span className="font-mono font-semibold text-gray-900 w-14">
-                            {Number(d.fecha.slice(8))} {nombreMes(mes).slice(0, 3)}
-                          </span>
-                          <Pastilla cat={d.diaria!.cat!} />
-                          <span className="text-gray-400">→</span>
-                          <Pastilla cat={d.peorHora!} />
-                          <span className="ml-auto font-mono text-gray-500">+{d.horasPeores} h</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-              <p className="mt-4 text-xs text-gray-500">Toca un día para ver sus indicadores hora por hora.</p>
-            </div>
-
-            {diaElegido && <DetalleDia dia={diaElegido} onCerrar={() => setElegido(null)} />}
-          </div>
+          {diaElegido && <DetalleDia dia={diaElegido} onCerrar={() => setElegido(null)} />}
         </div>
       )}
     </div>
@@ -195,7 +134,7 @@ interface VistaProps {
   onElegir: (fecha: string) => void;
 }
 
-const COLUMNAS = 'grid grid-cols-[3.6rem_5.8rem_2.6rem_repeat(24,minmax(0.9rem,1fr))] items-center gap-x-[2px]';
+const COLUMNAS = 'grid grid-cols-[3.6rem_5.8rem_3.4rem_repeat(24,minmax(0.9rem,1fr))] items-center gap-x-[2px]';
 
 function Rejilla({ dias, elegido, onElegir }: VistaProps) {
   return (
@@ -224,7 +163,7 @@ function Rejilla({ dias, elegido, onElegir }: VistaProps) {
             <Muestra cat={d.diaria?.cat ?? null} />
             {d.diaria?.cat == null ? <span className="text-gray-500">Sin datos</span> : CATEGORIAS[d.diaria!.cat!].nombre}
           </span>
-          <span role="cell" className="text-gray-700">
+          <span role="cell" className="text-gray-700 text-[0.9rem]">
             {d.diaria?.pol ? NOMBRE_CORTO[d.diaria?.pol] : '—'}
           </span>
           {d.horas.map((e, h) => (

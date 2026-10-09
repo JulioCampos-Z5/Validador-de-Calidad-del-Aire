@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { CheckCircle2, XCircle, Info, CalendarRange, Copy, Download, Check } from 'lucide-react';
 import type { Mir } from '../services/minutales';
-import { CONTAMINANTES_CRITERIO } from '../services/minutales';
+import { CONTAMINANTES_CRITERIO, type EstacionMir } from '../services/minutales';
+import { ariaOrden, TituloOrden, useOrden } from './orden';
 
 // Días AAAA-MM-DD como «7 oct 2025». En UTC: son fechas sin hora, y con la
 // zona local un día podía salir como el anterior.
@@ -75,6 +76,13 @@ async function capturar(nodo: HTMLElement): Promise<Blob> {
  * funciona— y entra al promedio; otro clic lo devuelve a sin equipo. El cálculo lo hace el backend, así que el total, el «Cumple», las
  * fallas y el Excel del reporte salen con la misma decisión.
  */
+// Columnas ordenables: la estación, cada contaminante (su cobertura), el total y si cumple.
+const valorMir = (e: EstacionMir, clave: string): unknown =>
+  clave === 'estacion' ? e.estacion
+    : clave === 'total' ? e.total
+      : clave === 'cumple' ? (e.cumple ? 1 : 0)
+        : e.coberturas[clave] ?? null;
+
 export default function TarjetaMir({
   mir,
   contaminantes,
@@ -90,6 +98,7 @@ export default function TarjetaMir({
 
   const tarjeta = useRef<HTMLDivElement>(null);
   const [captura, setCaptura] = useState<'copiada' | 'guardada' | 'error' | null>(null);
+  const { ordenadas, orden, alternar: ordenarPor } = useOrden(mir.estaciones, valorMir);
   const avisar = (estado: typeof captura) => {
     setCaptura(estado);
     window.setTimeout(() => setCaptura(null), 2500);
@@ -264,16 +273,24 @@ export default function TarjetaMir({
         <table className="min-w-full text-sm">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-4 py-2.5 text-left font-medium text-slate-600">Estación</th>
+              <th aria-sort={ariaOrden(orden, 'estacion')} className="px-4 py-2.5 text-left font-medium text-slate-600">
+                <TituloOrden clave="estacion" orden={orden} alternar={ordenarPor}>Estación</TituloOrden>
+              </th>
               {mir.contaminantes.map((c) => (
-                <th key={c} className="px-4 py-2.5 text-right font-medium text-slate-600">{c}</th>
+                <th key={c} aria-sort={ariaOrden(orden, c)} className="px-4 py-2.5 text-right font-medium text-slate-600">
+                  <TituloOrden clave={c} orden={orden} alternar={ordenarPor} derecha>{c}</TituloOrden>
+                </th>
               ))}
-              <th className="px-4 py-2.5 text-right font-semibold text-slate-700">Total</th>
-              <th className="px-4 py-2.5 text-center font-semibold text-slate-700">Cumple</th>
+              <th aria-sort={ariaOrden(orden, 'total')} className="px-4 py-2.5 text-right font-semibold text-slate-700">
+                <TituloOrden clave="total" orden={orden} alternar={ordenarPor} derecha>Total</TituloOrden>
+              </th>
+              <th aria-sort={ariaOrden(orden, 'cumple')} className="px-4 py-2.5 text-center font-semibold text-slate-700">
+                <TituloOrden clave="cumple" orden={orden} alternar={ordenarPor}>Cumple</TituloOrden>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {mir.estaciones.map((e) => (
+            {ordenadas.map((e) => (
               <tr
                 key={e.estacion}
                 className={`border-b border-slate-100 ${e.cumple ? '' : 'bg-red-50/40'}`}

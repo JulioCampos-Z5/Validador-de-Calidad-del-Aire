@@ -47,6 +47,9 @@ const temaSinDestello = {
         "if(t!=='claro'&&t!=='oscuro'){t=matchMedia('(prefers-color-scheme: dark)').matches?'oscuro':'claro'}" +
         "document.documentElement.dataset.tema=t}catch(e){}",
     },
+    // El icono de la pestaña (public/favicon.svg). Sin él, el navegador pide
+    // /favicon.ico y la consola se llena de 404.
+    { tag: 'link', injectTo: 'head' as const, attrs: { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' } },
   ],
 }
 
@@ -93,7 +96,7 @@ export default defineConfig({
           proxy.on('error', (_err, _req, res) => {
             if (!('writeHead' in res) || res.headersSent) return
             res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' })
-            res.end(JSON.stringify({ error: `La API no responde en ${api}. Arráncala con: cd api && go run ./cmd/api` }))
+            res.end(JSON.stringify({ error: `La API no responde en ${api}. Arráncala con: pnpm api (desde la raíz del proyecto)` }))
           })
         },
       },

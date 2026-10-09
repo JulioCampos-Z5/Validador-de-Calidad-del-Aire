@@ -61,6 +61,19 @@ describe('Registros', () => {
     expect(within(filas[3]).getAllByRole('cell').map((c) => c.textContent)).toEqual(['TOTAL', '24', '25', '26', '27'])
   })
 
+  it('MIDE: ordenar por columna; el mes va por calendario y TOTAL sigue al final', async () => {
+    render(<Registros />)
+    await userEvent.click(screen.getByRole('tab', { name: 'MIDE' }))
+    await screen.findByRole('table')
+    const meses = () => screen.getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[0].textContent)
+    await userEvent.click(screen.getByRole('button', { name: 'Global' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Global' }))
+    expect(meses()).toEqual(['Septiembre', 'Enero', 'TOTAL'])
+    await userEvent.click(screen.getByRole('button', { name: 'Mes' }))
+    expect(meses()).toEqual(['Enero', 'Septiembre', 'TOTAL'])
+    expect(screen.getByRole('columnheader', { name: 'Mes' })).toHaveAttribute('aria-sort', 'ascending')
+  })
+
   it('MIDE por municipio: agrupado y con filtro', async () => {
     render(<Registros />)
     await userEvent.click(screen.getByRole('tab', { name: 'MIDE por municipio' }))

@@ -35,28 +35,70 @@ pip install pyinstaller
 
 ## Desarrollo
 
-Motor de análisis (Flask), en el puerto 8010 — el que espera la API de Go:
+El proyecto v2 son **tres piezas** que tienen que estar corriendo a la vez:
+
+| Pieza | Carpeta | Puerto |
+|---|---|---|
+| Motor de análisis (Flask) | `backend/` | 8010 |
+| API central (Go) — login, módulos, proxy al motor | `api/` | 8081 |
+| Front v2 (Vite) | `web/` | 3100 |
+
+La API de Go es la carpeta nueva respecto a la v1: corre **dentro de `api/`**,
+porque de ahí lee su `api/.env`.
+
+Arrancar las tres de una vez (funciona igual en PowerShell, cmd o bash) y abrir
+http://localhost:3100:
+
+```bash
+pnpm iniciar
+```
+
+> Ctrl+C las detiene todas. Si Windows bloquea `go.exe` (Device Guard), la API
+> se arranca con el ejecutable ya compilado más reciente
+> (`escritorio-v2/build/validador-api.exe` o `api/bin/api.exe`).
+
+Solo una pieza, cada una en su terminal:
+
+```bash
+pnpm motor
+```
+
+```bash
+pnpm api
+```
+
+```bash
+pnpm dev
+```
+
+A mano, sin el script — motor en PowerShell:
+
+```bash
+$env:VALIDADOR_PUERTO=8010; python backend/app.py
+```
+
+Motor en bash:
 
 ```bash
 VALIDADOR_PUERTO=8010 python backend/app.py
 ```
 
-API central en Go, en el puerto 8081 (lee `api/.env`):
+API de Go (el `-C api` la ejecuta dentro de `api/`):
 
 ```bash
 go -C api run ./cmd/api
 ```
 
-Front v2, en el puerto 3100 — en **otra** terminal, con la API ya corriendo:
+Front v2:
 
 ```bash
-pnpm --dir web dev
+pnpm dev
 ```
 
 Compilar el front v2 (comprueba también los tipos):
 
 ```bash
-pnpm --dir web build
+pnpm build
 ```
 
 ---
@@ -78,7 +120,7 @@ python -m unittest discover -s backend/pruebas -t backend -p test_validaciones.p
 Las del front v2:
 
 ```bash
-pnpm --dir web test
+pnpm test
 ```
 
 Las de la API de Go (inventario y puertos necesitan `PRUEBAS_MYSQL_DSN`, ver
@@ -91,7 +133,7 @@ go -C api test ./...
 Las de la app de escritorio:
 
 ```bash
-pnpm --dir escritorio-v2 test
+pnpm test:escritorio
 ```
 
 ---
@@ -101,18 +143,20 @@ pnpm --dir escritorio-v2 test
 Abrirla sin compilar, usando el Python del sistema:
 
 ```bash
-pnpm --dir escritorio-v2 dev
+pnpm escritorio
 ```
 
 Generar el instalador en `salida-v2/` — front, API de Go, motor empaquetado y
 Electron:
 
 ```bash
-pnpm --dir escritorio-v2 exe
+pnpm instalador
 ```
 
 > Produce `Validador-v2-instalador.exe`.
 > No hace falta tener Python para usarlo: va dentro.
+> Si `go` está bloqueado, se empaqueta la API ya compilada
+> (`escritorio-v2/build/validador-api.exe`) y lo avisa en la consola.
 
 ---
 
@@ -188,10 +232,16 @@ está vacía, «Descargar la app» simplemente no aparece.
 
 ## Comprobaciones rápidas
 
-¿Responde el backend?
+¿Responde el motor?
 
 ```bash
 curl http://localhost:8010/api/health
+```
+
+¿Responde la API de Go?
+
+```bash
+curl http://localhost:8081/api/salud
 ```
 
 ¿Responde el contenedor?
@@ -227,7 +277,7 @@ curl "http://localhost:8010/api/registros?limite=20"
 Vaciarlos antes de reproducir un fallo:
 
 ```bash
-curl -X DELETE http://localhost:8000/api/registros
+curl -X DELETE http://localhost:8010/api/registros
 ```
 
 Ver la respuesta cruda de la API de Emisiones, para diagnosticar un cambio de

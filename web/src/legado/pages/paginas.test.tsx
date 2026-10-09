@@ -113,6 +113,17 @@ describe('Panel Datos (OrigenDatos)', () => {
     expect(screen.getByText('Base local (SQLite)')).toBeInTheDocument()
   })
 
+  it('en escritorio, «Archivos guardados» lleva al visor', async () => {
+    const ir = vi.fn()
+    const { unmount } = render(<OrigenDatos ir={ir} />)
+    expect(screen.queryByRole('button', { name: 'Archivos guardados' })).not.toBeInTheDocument()
+    unmount()
+    datos.valor.historicoDisponible = true
+    render(<OrigenDatos ir={ir} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Archivos guardados' }))
+    expect(ir).toHaveBeenCalledWith('archivos')
+  })
+
   it('elegir un origen abre su asistente', async () => {
     render(<OrigenDatos />)
     await userEvent.click(screen.getByRole('button', { name: /Consultar datos/ }))

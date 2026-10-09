@@ -26,13 +26,21 @@ beforeEach(() => {
 })
 
 describe('Visor de archivos', () => {
-  it('lista los guardados con tipo, tamaño y carpeta', async () => {
+  it('cards por defecto con tipo, tamaño y carpeta; tabla como otra vista', async () => {
     render(<Archivos ir={vi.fn()} />)
-    const fila = (await screen.findByText('BD_2026.xlsx')).closest('tr')!
-    expect(within(fila).getByText('Ya validado')).toBeInTheDocument()
-    expect(within(fila).getByText('88 KB')).toBeInTheDocument()
-    expect(screen.getByText('Trs_septiembre.csv').closest('tr')).toHaveTextContent('ENVISTA')
+    const card = (await screen.findByText('BD_2026.xlsx')).closest('li')!
+    expect(within(card).getByText('Ya validado')).toBeInTheDocument()
+    expect(card).toHaveTextContent('88 KB')
+    expect(within(card).getByRole('button', { name: 'Abrir BD_2026.xlsx en el validador' })).toBeInTheDocument()
+    expect(screen.getByText('Trs_septiembre.csv').closest('li')).toHaveTextContent('ENVISTA')
     expect(screen.getByText('C:\\datos\\archivos')).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: /Tabla/ }))
+    const fila = screen.getByText('BD_2026.xlsx').closest('tr')!
+    expect(within(fila).getByText('88 KB')).toBeInTheDocument()
+    expect(localStorage.getItem('archivos-vista')).toBe('tabla')
+    await userEvent.click(screen.getByRole('tab', { name: /Cards/ }))
   })
 
   it('buscar por nombre', async () => {

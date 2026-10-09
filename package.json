@@ -5,10 +5,15 @@
   "packageManager": "pnpm@11.4.0",
   "description": "Validador de Calidad del Aire v2 (front web v2 + app de escritorio v2)",
   "scripts": {
+    "iniciar": "node scripts/iniciar.mjs",
+    "motor": "node scripts/iniciar.mjs motor",
+    "api": "node scripts/iniciar.mjs api",
     "dev": "pnpm --dir web dev",
     "build": "pnpm --dir web build",
     "test": "pnpm --dir web test",
-    "app:dev": "pnpm --dir escritorio-v2 dev",
-    "app:exe": "pnpm --dir escritorio-v2 exe"
+    "test:escritorio": "pnpm --dir escritorio-v2 test",
+    "escritorio": "pnpm --dir escritorio-v2 dev",
+    "instalador": "pnpm --dir escritorio-v2 exe",
+    "cobertura": "pnpm --dir web exec vitest run --coverage"
   }
 }

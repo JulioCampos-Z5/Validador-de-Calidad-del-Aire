@@ -64,3 +64,7 @@
 .acceso:disabled { color: var(--tx3); cursor: default; }
 .acceso:disabled svg { color: var(--tx3); }
 .acceso .cap { font-weight: 400; margin-top: -4px; }
+
+/* Tablero: carga de datos y, a la derecha, la descarga de Ambient Weather */
+.tablero-cargas { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 16px; align-items: start; margin-bottom: 16px; }
+@media (max-width: 860px) { .tablero-cargas { grid-template-columns: 1fr; } }
