@@ -1,5 +1,5 @@
 import { resolve } from 'node:path'
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
 // Front v2 del Validador: un shell y un iframe por módulo.
@@ -19,8 +19,39 @@ const api = process.env.VALIDADOR_API ?? 'http://127.0.0.1:8081'
 const globalDeNode = { global: 'globalThis' }
 const plotly = ['plotly.js/lib/core', 'plotly.js/lib/bar', 'plotly.js/lib/heatmap', 'plotly.js/lib/violin']
 
+// El tema, puesto antes del primer pintado en todas las páginas.
+//
+// Cada módulo es un iframe nuevo, y su página nacía en claro: el tema llegaba
+// con el mensaje 'sesion' del shell, ya cargado el JS. En modo oscuro eso era
+// un destello blanco en cada cambio de módulo. Aquí la página lo toma del
+// shell (mismo origen) o, abierta sola, de la preferencia guardada o del
+// sistema, como src/shell/preferencias.ts. El <style> cubre el rato antes de
+// que cargue base.css (en desarrollo el CSS llega por JS) y sigue los cambios
+// de data-tema; después manda base.css.
+const temaSinDestello = {
+  name: 'tema-sin-destello',
+  transformIndexHtml: () => [
+    {
+      tag: 'style',
+      injectTo: 'head-prepend' as const,
+      children:
+        ":root{color-scheme:light;background:var(--bg,#fff)}" +
+        ":root[data-tema='oscuro']{color-scheme:dark;background:var(--bg,#0f1114)}",
+    },
+    {
+      tag: 'script',
+      injectTo: 'head-prepend' as const,
+      children:
+        "try{var t=window.parent!==window&&window.parent.document.documentElement.dataset.tema;" +
+        "if(t!=='claro'&&t!=='oscuro'){t=localStorage.getItem('validador.tema')}" +
+        "if(t!=='claro'&&t!=='oscuro'){t=matchMedia('(prefers-color-scheme: dark)').matches?'oscuro':'claro'}" +
+        "document.documentElement.dataset.tema=t}catch(e){}",
+    },
+  ],
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), temaSinDestello],
   define: globalDeNode,
   optimizeDeps: {
     // Las vistas de Gráficas se cargan al abrir su pestaña; sin esto Vite
@@ -40,8 +71,15 @@ export default defineConfig({
         admin: resolve(__dirname, 'm/admin/index.html'),
         registros: resolve(__dirname, 'm/registros/index.html'),
         parametros: resolve(__dirname, 'm/parametros/index.html'),
+        ambientweather: resolve(__dirname, 'm/ambientweather/index.html'),
       },
     },
+  },
+  // Pruebas: jsdom para los componentes; preparar.ts trae los matchers de
+  // Testing Library y limpia el DOM entre pruebas.
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/pruebas/preparar.ts'],
   },
   server: {
     port: 3100,

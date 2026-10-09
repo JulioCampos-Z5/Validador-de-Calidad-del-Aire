@@ -60,8 +60,10 @@ type Sesion struct {
 // Emisor firma y valida tokens. SesionActiva lo pone el modulo de usuarios:
 // asi cerrar sesion invalida el token aunque no haya expirado.
 type Emisor struct {
-	llave        []byte
-	duracion     time.Duration
+	llave    []byte
+	duracion time.Duration
+	// Vigencia cuando se pide «mantener la sesión iniciada». Cero = la normal.
+	recordar     time.Duration
 	SesionActiva func(ctx context.Context, idSesion int64) (bool, error)
 }
 
@@ -69,7 +71,23 @@ func NuevoEmisor(llave []byte, duracion time.Duration) *Emisor {
 	return &Emisor{llave: llave, duracion: duracion}
 }
 
+// ConRecordar fija la vigencia de las sesiones que se piden recordar.
+func (e *Emisor) ConRecordar(d time.Duration) *Emisor {
+	e.recordar = d
+	return e
+}
+
 func (e *Emisor) Duracion() time.Duration { return e.duracion }
+
+// DuracionDe: la vigencia de una sesion nueva. Recordarla la alarga, pero
+// sigue siendo una sesion de la base: «Salir» o desactivar al usuario la
+// cortan igual antes de que venza.
+func (e *Emisor) DuracionDe(recordar bool) time.Duration {
+	if recordar && e.recordar > e.duracion {
+		return e.recordar
+	}
+	return e.duracion
+}
 
 type claims struct {
 	Nombre string `json:"nombre"`

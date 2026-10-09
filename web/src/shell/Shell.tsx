@@ -20,8 +20,8 @@ export function Shell() {
 
   useEffect(() => aplicarTema(tema), [tema])
 
-  const entrar = (s: Sesion) => {
-    guardarSesion(s)
+  const entrar = (s: Sesion, recordar: boolean) => {
+    guardarSesion(s, recordar)
     setSesion(s)
   }
   const salir = useCallback(() => {
@@ -60,8 +60,19 @@ function Escritorio({ sesion, tema, cambiarTema, salir }: {
 
   const rol = sesion.usuario.rol
   const visibles = useMemo(() => MODULOS.filter((m) => !m.roles || m.roles.includes(rol)), [rol])
+  // Sin modulo en la direccion se abre Estaciones; si esa no esta (la app de
+  // escritorio no la lleva), el primero disponible en cuanto se sabe cuales hay.
+  const sinElegir = useRef(!location.hash.slice(1))
   const [actual, setActual] = useState<string>(() => location.hash.slice(1) || 'estaciones')
   const modulo: ModuloFront = visibles.find((m) => m.id === actual) ?? visibles[0]!
+  useEffect(() => {
+    if (!activos || !sinElegir.current) return
+    sinElegir.current = false
+    if (!disponible(modulo, activos)) {
+      const primero = visibles.find((m) => disponible(m, activos))
+      if (primero) setActual(primero.id)
+    }
+  }, [activos, modulo, visibles])
 
   // El token puede haber vencido o la sesion cerrado en otro lado.
   useEffect(() => {

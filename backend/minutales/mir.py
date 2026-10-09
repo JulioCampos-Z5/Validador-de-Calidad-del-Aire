@@ -44,8 +44,32 @@ CONTAMINANTES_CRITERIO = ['O3', 'NO2', 'SO2', 'CO', 'PM10', 'PM2.5']
 # representativa del periodo y no debería usarse para promedios oficiales.
 UMBRAL_CUMPLE = 75.0
 
+# Banderas que solo se ponen sobre una lectura que existió. Un archivo ya
+# validado (o la base local) no trae el crudo: la validación cambió el número
+# por su bandera. Para que el MIR mida lo mismo que con el SIMAJ —cuánto
+# publicó la red, no cuánto pasó las reglas— esas celdas cuentan como lectura.
+# No cuentan ND/SE/NE (no hubo dato, equipo ni estación), ni IF/IC: con el
+# equipo en falla o calibrando no se estaba midiendo el aire.
+BANDERAS_CON_LECTURA = {'IR', 'IO', 'DS', 'VE', 'VZ'}
 
-def _horas_esperadas(df_estacion: pd.DataFrame) -> int:
+
+def _lecturas(serie: pd.Series, validado: bool) -> int:
+    """Cuántas horas de la serie traen una lectura del equipo."""
+    numericas = pd.to_numeric(serie, errors='coerce').notna()
+    if validado:
+        numericas |= serie.astype(str).str.strip().isin(BANDERAS_CON_LECTURA)
+    return int(numericas.sum())
+
+
+def _tramo(df: pd.DataFrame) -> tuple[str | None, str | None]:
+    """Primer y último día (AAAA-MM-DD) con filas, o (None, None)."""
+    fechas = pd.to_datetime(df['DATE'], errors='coerce').dropna()
+    if fechas.empty:
+        return None, None
+    return fechas.min().strftime('%Y-%m-%d'), fechas.max().strftime('%Y-%m-%d')
+
+
+def _horas_esperadas(desde: str | None, hasta: str | None) -> int:
     """
     Horas que debería haber en el periodo, no las que hay en el archivo.
 
@@ -54,11 +78,9 @@ def _horas_esperadas(df_estacion: pd.DataFrame) -> int:
     con 100% de cobertura: no hay filas malas porque no hay filas. Contra el
     calendario, esa semana aparece como lo que es, un hueco.
     """
-    fechas = pd.to_datetime(df_estacion['DATE'], errors='coerce')
-    fechas = fechas.dropna()
-    if fechas.empty:
+    if desde is None or hasta is None:
         return 0
-    dias = (fechas.max() - fechas.min()).days + 1
+    dias = (pd.Timestamp(hasta) - pd.Timestamp(desde)).days + 1
     return dias * 24
 
 
@@ -67,21 +89,28 @@ def calcular_mir(
     contaminantes: list[str] | None = None,
     umbral: float = UMBRAL_CUMPLE,
     como_cero: set[tuple[str, str]] | None = None,
+    validado: bool = False,
 ) -> dict:
     """
     Calcula el MIR por estación y el resumen del periodo.
 
     `contaminantes` permite elegir cuáles entran en el promedio; por omisión los
     seis criterio. `como_cero` son pares (estación, contaminante) sin lecturas
-    donde sí hay equipo: se cuentan como 0 en vez de excluirse. Devuelve un diccionario listo
-    para serializar a JSON.
+    donde sí hay equipo: se cuentan como 0 en vez de excluirse. `validado` es
+    para filas que ya pasaron por la validación (archivo BD o base local): ver
+    BANDERAS_CON_LECTURA. Devuelve un diccionario listo para serializar a JSON.
     """
     como_cero = como_cero or set()
     elegidos = [c for c in (contaminantes or CONTAMINANTES_CRITERIO) if c in df.columns]
+    # El tramo que se compara, para decirlo en pantalla y en el reporte: sin
+    # fechas, un 76% no se sabe de qué periodo es.
+    desde, hasta = _tramo(df) if not df.empty else (None, None)
     if not elegidos or df.empty:
         return {
             'contaminantes': elegidos,
             'umbral': umbral,
+            'desde': desde,
+            'hasta': hasta,
             'estaciones': [],
             'promedio_periodo': None,
             'estaciones_que_cumplen': 0,
@@ -91,11 +120,14 @@ def calcular_mir(
     filas = []
     for estacion in sorted(df['STATION'].dropna().unique()):
         df_est = df[df['STATION'] == estacion]
-        esperadas = _horas_esperadas(df_est)
+        # Cada estación se mide contra su propio primer y último día: es la
+        # regla de siempre, y por eso su tramo va en la fila.
+        est_desde, est_hasta = _tramo(df_est)
+        esperadas = _horas_esperadas(est_desde, est_hasta)
 
         coberturas: dict[str, float | None] = {}
         for c in elegidos:
-            validos = pd.to_numeric(df_est[c], errors='coerce').notna().sum()
+            validos = _lecturas(df_est[c], validado)
             if esperadas == 0:
                 coberturas[c] = None
             elif validos == 0:
@@ -123,6 +155,8 @@ def calcular_mir(
             'coberturas': coberturas,
             'sin_equipo': sin_equipo,
             'como_cero': forzados,
+            'desde': est_desde,
+            'hasta': est_hasta,
             'horas_esperadas': esperadas,
             'total': total,
             'cumple': (total is not None and total >= umbral),
@@ -132,6 +166,8 @@ def calcular_mir(
     return {
         'contaminantes': elegidos,
         'umbral': umbral,
+        'desde': desde,
+        'hasta': hasta,
         'estaciones': filas,
         'promedio_periodo': round(sum(totales) / len(totales)) if totales else None,
         'estaciones_que_cumplen': sum(1 for f in filas if f['cumple']),

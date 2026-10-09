@@ -18,6 +18,9 @@ export interface EstacionMir {
   sin_equipo: string[];
   /** Hay equipo pero no dio datos (lo marca el usuario): cuentan como 0. */
   como_cero: string[];
+  /** Primer y último día (AAAA-MM-DD) de la estación: de ahí salen sus horas esperadas. */
+  desde?: string | null;
+  hasta?: string | null;
   horas_esperadas: number;
   /** null cuando la estación no tiene ni un contaminante medido. */
   total: number | null;
@@ -27,6 +30,9 @@ export interface EstacionMir {
 export interface Mir {
   contaminantes: string[];
   umbral: number;
+  /** Tramo que se compara (AAAA-MM-DD). Opcional: un backend anterior no lo manda. */
+  desde?: string | null;
+  hasta?: string | null;
   estaciones: EstacionMir[];
   promedio_periodo: number | null;
   estaciones_que_cumplen: number;

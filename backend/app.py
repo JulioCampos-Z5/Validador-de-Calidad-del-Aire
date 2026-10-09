@@ -111,6 +111,25 @@ from ias.rutas import bp as bp_ias
 app.register_blueprint(bp_ias)
 
 import ultimo
+from minutales.mir import calcular_mir, diagnostico_fallas
+
+
+def mir_de_archivo(df, validado, contaminantes=None, origen='archivo'):
+    """
+    El MIR de lo que trae un archivo, igual que el del SIMAJ o Emisiones.
+
+    Las horas esperadas salen de las fechas de cada estación en el archivo, como
+    con los otros orígenes (ver minutales/mir.py). Las filas se guardan para que
+    marcar contaminantes, los 0 y el reporte en Excel funcionen sin recargarlo.
+    `validado` cuando no hay crudo: un BD ya procesado. Sin estación o fecha no
+    hay indicador que calcular, y el archivo se carga igual.
+    """
+    if 'STATION' not in df.columns or 'DATE' not in df.columns:
+        ultimo.olvidar_mir()
+        return None, []
+    ultimo.guardar(df, origen, validado=validado)
+    mir = calcular_mir(df, contaminantes, validado=validado)
+    return mir, diagnostico_fallas(mir)
 
 # Configuración
 # Carpeta de trabajo para archivos subidos y Excel generados.
@@ -313,6 +332,21 @@ def detectar_formato_archivo(filepath):
         return 'envista_raw', None
 
 
+def normalizar_fecha_hora(df):
+    """DATE a 'AAAA-MM-DD' y HOUR a entero, como espera el resto del sistema.
+
+    Excel guarda DATE como fecha (a veces con la hora: 2026-01-01 01:00) y
+    pandas la lee como Timestamp. Sin esto, al JSON llegaba como
+    'Thu, 01 Jan 2026 01:00:00 GMT' y el frontend no ubicaba ninguna fecha.
+    La hora sale de HOUR, no de la de DATE.
+    """
+    if 'DATE' in df.columns:
+        df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce').dt.strftime('%Y-%m-%d')
+    if 'HOUR' in df.columns:
+        df['HOUR'] = pd.to_numeric(df['HOUR'], errors='coerce').fillna(0).astype(int)
+    return df
+
+
 def cargar_archivo_procesado(filepath, sheet_name):
     """Cargar datos desde un archivo ya procesado (hoja Data o Datos_Validados, o CSV BD).
 
@@ -325,10 +359,7 @@ def cargar_archivo_procesado(filepath, sheet_name):
     else:
         df = pd.read_excel(filepath, sheet_name=sheet_name)
 
-    if 'DATE' in df.columns:
-        df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce').dt.strftime('%Y-%m-%d')
-    if 'HOUR' in df.columns:
-        df['HOUR'] = pd.to_numeric(df['HOUR'], errors='coerce').fillna(0).astype(int)
+    normalizar_fecha_hora(df)
 
     for col in COLUMNAS_BD:
         if col not in df.columns:
@@ -1348,6 +1379,13 @@ def validate_full():
         else:
             df_validado = validar_datos_completo(df_convertido, config_validacion)
         
+        # MIR sobre lo que trae el archivo ANTES de validar, como con el SIMAJ:
+        # mide cuánto publicó la red. Un BD procesado ya no tiene el crudo.
+        mir, fallas = mir_de_archivo(
+            df_convertido, validado=(formato == 'bd_procesado'),
+            contaminantes=data.get('contaminantes'),
+        )
+
         ultimo.guardar_validado(df_validado, 'archivo', filename)
         # App de escritorio: lo importado queda también en la base local.
         historico = guardar_importado(df_validado, filename)
@@ -1386,8 +1424,10 @@ def validate_full():
             'data_preview': df_json,
             'estadisticas_detalladas': stats_detalladas.to_dict(orient='records') if not stats_detalladas.empty else [],
             'historico': historico,
+            'mir': mir,
+            'fallas': fallas,
         }
-        
+
         return jsonify(response)
     
     except Exception as e:
@@ -1437,7 +1477,9 @@ def preview_validated():
 
         if df is None or len(df) == 0:
             return jsonify({'error': f'No se encontraron datos en la hoja {hoja}'}), 400
+        normalizar_fecha_hora(df)
 
+        mir, fallas = mir_de_archivo(df, validado=True, contaminantes=data.get('contaminantes'))
         ultimo.guardar_validado(df, 'archivo', filename)
         historico = guardar_importado(df, filename)
         resumen_banderas, _, estadisticas, stats_detalladas = crear_resumen_validacion(df)
@@ -1459,6 +1501,8 @@ def preview_validated():
             'data_preview': df_json,
             'estadisticas_detalladas': stats_detalladas.to_dict(orient='records') if not stats_detalladas.empty else [],
             'historico': historico,
+            'mir': mir,
+            'fallas': fallas,
         })
 
     except Exception as e:

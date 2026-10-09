@@ -207,7 +207,7 @@ def recalcular_mir():
     umbral = float(cuerpo.get('umbral', 75))
     como_cero = leer_como_cero(cuerpo.get('como_cero'))
 
-    mir = calcular_mir(ultimo.datos(), contaminantes, umbral, como_cero)
+    mir = calcular_mir(ultimo.datos(), contaminantes, umbral, como_cero, validado=ultimo.es_validado())
     return jsonify({'mir': mir, 'fallas': diagnostico_fallas(mir)})
 
 
@@ -271,7 +271,7 @@ def _mir_pedido():
     contaminantes = request.args.get('contaminantes')
     elegidos = contaminantes.split(',') if contaminantes else CONTAMINANTES_CRITERIO
     como_cero = leer_como_cero(request.args.get('como_cero', ''))
-    return calcular_mir(ultimo.datos(), elegidos, como_cero=como_cero)
+    return calcular_mir(ultimo.datos(), elegidos, como_cero=como_cero, validado=ultimo.es_validado())
 
 
 @bp.route('/reporte.xlsx', methods=['GET'])

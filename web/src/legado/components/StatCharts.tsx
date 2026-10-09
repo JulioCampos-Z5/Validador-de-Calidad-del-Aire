@@ -19,6 +19,7 @@ import {
   COLORES_ESTACIONES,
   getUnitsAndName,
 } from '../constants';
+import { parametroInicial } from '../graficas/series';
 
 interface DataPoint {
   STATION: string;
@@ -55,8 +56,10 @@ function momentoLegible(fila: DataPoint): string {
 
 const StatCharts = ({ data }: StatChartsProps) => {
   const [showBoxPlot, setShowBoxPlot] = useState<boolean>(false); // false = Desviación, true = Violín
-  const [selectedParam, setSelectedParam] = useState<string>('O3');
-  const [paramType, setParamType] = useState<'contaminantes' | 'meteorologicos'>('contaminantes');
+  const [selectedParam, setSelectedParam] = useState<string>(
+    () => parametroInicial(data, [...CONTAMINANTES_CONST, ...METEOROLOGICOS_CONST]));
+  const [paramType, setParamType] = useState<'contaminantes' | 'meteorologicos'>(
+    () => ((METEOROLOGICOS_CONST as readonly string[]).includes(selectedParam) ? 'meteorologicos' : 'contaminantes'));
   // Por omisión solo los extremos: son los que se quieren fechar, y dibujar
   // todas las horas de trece estaciones tapa la forma del violín.
   const [todosLosPuntos, setTodosLosPuntos] = useState(false);

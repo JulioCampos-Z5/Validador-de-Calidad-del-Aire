@@ -52,7 +52,7 @@ def cargar():
     No se vuelve a validar: lo guardado ya pasó por las validaciones cuando se
     cargó, y sus banderas son justo lo que se quiere recuperar.
     """
-    from app import crear_resumen_validacion
+    from app import crear_resumen_validacion, mir_de_archivo
 
     ruta = _ruta()
     if not ruta:
@@ -74,6 +74,9 @@ def cargar():
     if df.empty:
         return jsonify({'error': 'La base local no tiene datos guardados en ese periodo.'}), 404
 
+    # Lo guardado ya está validado: el MIR cuenta sus banderas de lectura.
+    mir, fallas = mir_de_archivo(df, validado=True, contaminantes=cuerpo.get('contaminantes'),
+                                 origen='historico')
     ultimo.guardar_validado(df, 'historico', 'Base local')
     resumen_banderas, _detallado, estadisticas, stats_detalladas = crear_resumen_validacion(df)
 
@@ -95,6 +98,8 @@ def cargar():
         'data_preview': df.astype(object).where(df.notna(), '').to_dict(orient='records'),
         'estadisticas_detalladas': (stats_detalladas.to_dict(orient='records')
                                     if not stats_detalladas.empty else []),
+        'mir': mir,
+        'fallas': fallas,
     })
 
 

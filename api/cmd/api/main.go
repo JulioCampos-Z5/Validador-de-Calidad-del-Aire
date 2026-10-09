@@ -5,13 +5,16 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"validador-api/internal/ambientweather"
 	"validador-api/internal/inventario"
 	"validador-api/internal/modulo"
 	"validador-api/internal/platform/auth"
@@ -39,7 +42,7 @@ func correr() error {
 	defer parar()
 
 	registro := modulo.NuevoRegistro()
-	emisor := auth.NuevoEmisor(cfg.LlaveJWT, cfg.DuracionSesion)
+	emisor := auth.NuevoEmisor(cfg.LlaveJWT, cfg.DuracionSesion).ConRecordar(cfg.DuracionRecordar)
 
 	// usuarios: obligatorio, sin el nadie entra.
 	semadet, err := db.Abrir(ctx, cfg.DSNSemadet)
@@ -52,6 +55,11 @@ func correr() error {
 	}
 	usuariosSvc := usuarios.NewService(usuarios.NewRepository(semadet), emisor)
 	registro.Activar(usuarios.NewHandler(usuariosSvc, emisor), "/api/usuarios/")
+	if u := cfg.UsuarioInicial; u.Correo != "" {
+		if err := usuariosSvc.AsegurarInicial(ctx, u.Nombre, u.Correo, u.Hash); err != nil {
+			return fmt.Errorf("usuario inicial: %w", err)
+		}
+	}
 
 	// puertos: solo si tiene su base.
 	if cfg.DSNPuertos != "" {
@@ -100,7 +108,26 @@ func correr() error {
 	// Disenados, todavia sin construir (doc/ARQUITECTURA-v2.md).
 	registro.EnProceso("almacen", "/api/almacen/")
 	registro.EnProceso("envista", "/api/envista/")
-	registro.EnProceso("ambientweather", "/api/ambient-weather/")
+
+	// ambientweather: con su base se enciende; sin llaves sirve lo guardado.
+	if cfg.DSNAmbient != "" {
+		base, err := db.Abrir(ctx, cfg.DSNAmbient)
+		if err != nil {
+			return err
+		}
+		defer base.Close()
+		if err := db.Migrar(ctx, base, ambientweather.Migraciones()); err != nil {
+			return err
+		}
+		var cliente *ambientweather.Cliente
+		if cfg.Ambient.ConLlaves() {
+			cliente = ambientweather.NuevoCliente(cfg.Ambient.URL, cfg.Ambient.APIKey, cfg.Ambient.ApplicationKey)
+		}
+		svc := ambientweather.NewService(ambientweather.NewRepository(base), cliente, cfg.Ambient.Intervalo, usuariosSvc)
+		registro.Activar(ambientweather.NewHandler(svc, emisor), "/api/ambient-weather/")
+	} else {
+		registro.EnProceso("ambientweather", "/api/ambient-weather/")
+	}
 
 	mux := http.NewServeMux()
 	registro.Montar(mux)
@@ -111,8 +138,19 @@ func correr() error {
 		}
 		httpx.JSON(w, http.StatusOK, map[string]any{"ok": true, "servicio": "validador-api"})
 	})
-	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
-		httpx.Error(w, http.StatusNotFound, "ruta no encontrada")
+	// Las paginas del front, si se pidieron (app de escritorio): mismo origen
+	// que /api, asi que el front no cambia nada. Lo que empieza por /api/ y no
+	// existe sigue siendo un 404 en JSON, no una pagina.
+	var paginas http.Handler
+	if cfg.Estaticos != "" {
+		paginas = http.FileServer(http.Dir(cfg.Estaticos))
+	}
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if paginas == nil || strings.HasPrefix(r.URL.Path, "/api/") {
+			httpx.Error(w, http.StatusNotFound, "ruta no encontrada")
+			return
+		}
+		paginas.ServeHTTP(w, r)
 	})
 
 	registro.Iniciar(ctx)

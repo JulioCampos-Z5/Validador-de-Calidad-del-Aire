@@ -9,7 +9,8 @@ plan completo está en [doc/ARQUITECTURA-v2.md](../doc/ARQUITECTURA-v2.md).
 | `puertos` | ✅ eventos y latidos del detector de puertos | `MYSQL_DSN_PUERTOS` |
 | `inventario` | ✅ equipos, estaciones, ubicación, complementos | `MYSQL_DSN_INVENTARIO` (vacío en producción hasta crear su base) |
 | `validacion` | ✅ puerta al backend de Python: `/api/analisis/*` → Flask `/api/*` | `VALIDADOR_BACKEND_URL` |
-| `almacen`, `envista`, `ambientweather` | ⏳ en proceso (responden 503) | — |
+| `ambientweather` | ✅ consulta ambientweather.net cada minuto y guarda cada lectura; histórico bajo pedido | `MYSQL_DSN_AMBIENT_WEATHER` (sin `AMBIENT_WEATHER_API_KEY` y `AMBIENT_WEATHER_APPLICATION_KEY` solo sirve lo guardado) |
+| `almacen`, `envista` | ⏳ en proceso (responden 503) | — |
 
 Un módulo se enciende cuando tiene su `MYSQL_DSN_*`. Sus tablas se crean solas
 al arrancar: cada módulo trae sus migraciones en `internal/<modulo>/migraciones/`.
@@ -24,6 +25,21 @@ go run ./cmd/admin crear-usuario -nombre "Tu nombre" -correo tu@correo -rol root
 go run ./cmd/api                    # escucha en :8081
 go test ./...
 ```
+
+### Pruebas
+
+`go test ./...` corre todo sin bases externas (usuarios y Ambient Weather sobre
+SQLite temporal). Inventario y puertos solo existen en MySQL: sus pruebas
+completas crean una base propia y desechable y la borran al terminar
+(`internal/platform/db/dbprueba`); sin la variable se saltan:
+
+```bash
+PRUEBAS_MYSQL_DSN="root:<contraseña>@tcp(127.0.0.1:3307)/" go test ./...
+```
+
+En Windows, si el Control de aplicaciones bloquea el ejecutable de prueba en
+la carpeta temporal («An Application Control policy has blocked this file»),
+usa una carpeta del proyecto: `GOTMPDIR=$PWD/bin/gotmp go test ./...`.
 
 ## Roles
 
@@ -53,6 +69,10 @@ go test ./...
 | `PUT /api/inventario/equipos/{id}/complementos` `{idEquipos: []}` | root, admin, técnico |
 | `POST /api/inventario/estaciones` · `PUT /api/inventario/estaciones/{id}` | root, admin, técnico |
 | `/api/analisis/*` → Flask (upload, validate/full, download, minutales…) | con sesión; los POST quedan en bitácora |
+| `GET /api/ambient-weather/estado` · `/dispositivos` | con sesión |
+| `GET /api/ambient-weather/serie?mac=&desde=&hasta=&puntos=` (cruda si cabe; si no, en cubetas redondas: promedio, máximo en acumulados, promedio vectorial en dirección) | con sesión |
+| `GET /api/ambient-weather/lecturas?mac=&desde=&hasta=&limite=&pagina=&orden=&dir=asc\|desc` → `{lecturas, total, columnas}` (`orden`: `fecha` o una columna; `columnas`: las que traen datos en el tramo) | con sesión |
+| `POST /api/ambient-weather/historico` `{mac?, dias}` (en segundo plano, una a la vez) | root, admin |
 
 ## Integración con el detector de puertos
 

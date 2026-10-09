@@ -11,7 +11,7 @@ import (
 	"validador-api/internal/platform/auth"
 )
 
-//go:embed migraciones/*.sql
+//go:embed migraciones/*.sql migraciones/sqlite/*.sql
 var migraciones embed.FS
 
 // Migraciones devuelve los .sql de la base semadet.
@@ -61,6 +61,8 @@ type Cambios struct {
 type Login struct {
 	Correo     string `json:"correo"`
 	Contrasena string `json:"contrasena"`
+	// Mantener la sesion iniciada: el token dura API_DURACION_RECORDAR.
+	Recordar bool `json:"recordar"`
 }
 
 type RespuestaLogin struct {

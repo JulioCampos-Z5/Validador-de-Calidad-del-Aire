@@ -310,6 +310,26 @@ class VistaPreviaDeValidado(ConCliente):
         self.assertEqual(datos['data_preview'][0]['PM10'], 5000)
         self.assertEqual(datos['summary']['banderas']['Cantidad']['IR'], 1)
 
+    def test_fecha_de_excel_con_hora_llega_como_aaaa_mm_dd(self):
+        """
+        Un BD guardado en Excel trae DATE como fecha con hora (2026-01-01
+        01:00). Llegaba al frontend como 'Thu, 01 Jan 2026 01:00:00 GMT' y las
+        gráficas no ubicaban ninguna fecha.
+        """
+        ruta = os.path.join(self.carpeta, 'BD_2026.xlsx')
+        pd.DataFrame({
+            'STATION': ['AGU', 'AGU'],
+            'DATE': pd.to_datetime(['2026-01-01 01:00', '2026-01-02 00:00']),
+            'HOUR': [1, 0],
+            'O3': [0.018, 0.004],
+        }).to_excel(ruta, sheet_name='Data', index=False)
+
+        datos = self.cliente.post('/api/preview-validated', json={'filename': 'BD_2026.xlsx'}).get_json()
+        self.assertEqual([f['DATE'] for f in datos['data_preview']], ['2026-01-01', '2026-01-02'])
+        self.assertEqual([f['HOUR'] for f in datos['data_preview']], [1, 0])
+        self.assertEqual(datos['summary']['fecha_inicio'], '2026-01-01')
+        self.assertEqual(datos['summary']['fecha_fin'], '2026-01-02')
+
 
 class AppDeEscritorio(ConCliente):
     """

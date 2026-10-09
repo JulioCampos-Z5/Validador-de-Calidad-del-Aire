@@ -5,6 +5,7 @@ import {
 import apiService, { type RegistroServidor } from '../services/api';
 import ReporteFallas from '../components/ReporteFallas';
 import TarjetaMir from '../components/TarjetaMir';
+import TablaMide from '../components/TablaMide';
 import { useDatos } from '../estado/DatosContexto';
 
 /**
@@ -27,6 +28,14 @@ import { useDatos } from '../estado/DatosContexto';
  */
 
 type Nivel = 'todos' | 'ERROR' | 'WARNING';
+
+/** Las pestañas de la página: lo que falla y las dos hojas MIDE. */
+const PESTANAS = [
+  { id: 'fallas' as const, etiqueta: 'MIR y fallas' },
+  { id: 'mide' as const, etiqueta: 'MIDE' },
+  { id: 'mideMunicipio' as const, etiqueta: 'MIDE por municipio' },
+];
+type Pestana = typeof PESTANAS[number]['id'];
 
 const ESTILOS: Record<string, { fondo: string; texto: string; icono: typeof AlertCircle }> = {
   ERROR: { fondo: 'bg-red-50 border-red-200', texto: 'text-red-700', icono: AlertCircle },
@@ -111,13 +120,12 @@ function Entrada({ registro }: { registro: RegistroServidor }) {
 }
 
 export default function Registros() {
-  // Las fallas de la red salen del periodo que haya cargado, no de una consulta
-  // propia. Existen cuando los datos vienen de una consulta por periodo —el
-  // SIMAJ o la API de Emisiones—; un archivo suelto no dice qué horas debería
-  // haber en el tramo, y sin eso no hay cobertura que medir.
+  // Las fallas de la red salen de lo que haya cargado, no de una consulta
+  // propia: SIMAJ, API de Emisiones, archivo o base local.
   const { fallas, mir, descripcion, contaminantesMir, cambiarContaminantesMir, alternarCeroMir } = useDatos();
 
   const [registros, setRegistros] = useState<RegistroServidor[]>([]);
+  const [pestana, setPestana] = useState<Pestana>('fallas');
   const [nivel, setNivel] = useState<Nivel>('todos');
   const [capacidad, setCapacidad] = useState(0);
   const [cargando, setCargando] = useState(true);
@@ -156,6 +164,30 @@ export default function Registros() {
         </div>
       </div>
 
+      <div role="tablist" aria-label="Vistas de registros" className="flex flex-wrap gap-1.5">
+        {PESTANAS.map(({ id, etiqueta }) => {
+          const activa = pestana === id;
+          return (
+            <button
+              key={id}
+              role="tab"
+              type="button"
+              aria-selected={activa}
+              onClick={() => setPestana(id)}
+              className={`inline-flex items-center px-3.5 py-1.5 rounded-[10px] text-[13px] font-medium border bg-white transition-colors ${
+                activa ? 'border-slate-800 text-slate-900' : 'border-slate-300 text-slate-600 hover:border-slate-500'
+              }`}
+            >
+              {etiqueta}
+            </button>
+          );
+        })}
+      </div>
+
+      {pestana === 'mide' && <TablaMide hoja="amg" />}
+      {pestana === 'mideMunicipio' && <TablaMide hoja="municipios" />}
+
+      {pestana === 'fallas' && <>
       {/* ── La red ── */}
       <section className="space-y-3">
         <div className="flex flex-wrap items-baseline gap-x-3">
@@ -179,11 +211,11 @@ export default function Registros() {
           </>
         ) : (
           <div className="bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center">
-            <p className="text-slate-600">Sin periodo consultado.</p>
+            <p className="text-slate-600">No hay datos cargados.</p>
             <p className="text-sm text-slate-500 mt-1">
-              Consulta uno desde «Consultar datos» —del SIMAJ o de la API de
-              Emisiones— para ver qué canales no llegan al umbral. Un archivo
-              suelto no sirve: no dice cuántas horas debería haber en el tramo.
+              Carga un periodo o un archivo desde «Consultar datos» para ver qué
+              canales no llegan al umbral. Si ya cargaste un archivo, le faltan
+              las columnas de estación o fecha.
             </p>
           </div>
         )}
@@ -265,6 +297,7 @@ export default function Registros() {
           {registros.map((r) => <Entrada key={r.id} registro={r} />)}
         </div>
       )}
+      </>}
     </div>
   );
 }

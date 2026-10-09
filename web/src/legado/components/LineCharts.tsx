@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, type ReactNode } from 'react';
 import Plotly from '../graficas/plotly';
 import {
-  rejillaHoraria, serieEnRejilla, agregadoZona, promedioMovil, nowcast, type Agregado,
+  rejillaHoraria, serieEnRejilla, agregadoZona, promedioMovil, nowcast, parametroInicial, type Agregado,
 } from '../graficas/series';
 import {
   CONTAMINANTES as CONTAMINANTES_CONST,
@@ -222,7 +222,11 @@ const LineCharts = ({ data }: LineChartsProps) => {
   const [selectedStations, setSelectedStations] = useState<Set<string>>(
     () => new Set(data.map(d => d.STATION))
   );
-  const [selectedParams, setSelectedParams] = useState<Set<string>>(new Set(['O3']));
+  // O3 de partida; si los datos no lo traen (p. ej. Ambient Weather, que solo
+  // tiene meteorología), el primero que sí venga.
+  const [selectedParams, setSelectedParams] = useState<Set<string>>(
+    () => new Set([parametroInicial(data, [...CONTAMINANTES, ...METEOROLOGICOS])]),
+  );
   // Agregados de toda la zona metropolitana. Van aparte de las estaciones
   // porque no dependen de cuáles estén marcadas: se calculan siempre con las
   // 13, que es lo que significa «AMG».
@@ -247,12 +251,26 @@ const LineCharts = ({ data }: LineChartsProps) => {
   // Casillas: se pueden activar varios promedios del mismo parámetro a la vez,
   // p. ej. el móvil de 24 h y el NowCast para compararlos. Cada uno se
   // distingue por su trazo (VARIANTES[v].dash).
-  const alternarVariante = (p: string, v: Variante) =>
-    setVariantes(prev => {
-      const next = new Set(prev);
-      const clave = `${p}|${v}`;
-      if (next.has(clave)) next.delete(clave); else next.add(clave);
-      return next;
+  const alternarVariante = (p: string, v: Variante) => {
+    const clave = `${p}|${v}`;
+    const next = new Set(variantes);
+    if (next.has(clave)) next.delete(clave); else next.add(clave);
+    setVariantes(next);
+    // Si era el ultimo promedio y la horaria estaba oculta, el parametro se
+    // quedaria sin nada que dibujar: la horaria vuelve.
+    if (sinHoraria.has(p) && !(VARIANTES_POR_PARAM[p] || []).some(x => next.has(`${p}|${x}`))) {
+      setSinHoraria(prev => { const s = new Set(prev); s.delete(p); return s; });
+    }
+  };
+  // Parametros cuya serie horaria se oculta, para ver solo sus promedios
+  // (8 h, 24 h, NowCast) sin la horaria encima. Por omision se ve.
+  const [sinHoraria, setSinHoraria] = useState<Set<string>>(new Set());
+  const conPromedio = (p: string) => (VARIANTES_POR_PARAM[p] || []).some(v => tieneVariante(p, v));
+  const alternarHoraria = (p: string) =>
+    setSinHoraria(prev => {
+      const s = new Set(prev);
+      if (s.has(p)) s.delete(p); else s.add(p);
+      return s;
     });
   // Estilo de línea por parámetro (override manual)
   const [lineStyles, setLineStyles] = useState<Record<string, 'solid' | 'dash' | 'dot'>>({});
@@ -369,8 +387,11 @@ const LineCharts = ({ data }: LineChartsProps) => {
       // Solo las estaciones con al menos un dato del parámetro: una sin datos
       // no dibuja nada y solo ensuciaba la leyenda.
       const conDatos = stationsToShow.filter(s => series[s].some(v => v !== null));
+      // La horaria se puede ocultar para ver solo los promedios; con ella se
+      // van la banda ±σ y el promedio de lo seleccionado, que salen de ella.
+      const horaria = !sinHoraria.has(param);
 
-      conDatos.forEach((station) => {
+      if (horaria) conDatos.forEach((station) => {
         result.push({
           type: 'scatter',
           mode: 'lines',
@@ -411,7 +432,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
       });
 
       // Banda promedio ± σ de las estaciones marcadas.
-      if (conDatos.length > 1) {
+      if (horaria && conDatos.length > 1) {
         const medias: (number | null)[] = [];
         const inferior: (number | null)[] = [];
         const superior: (number | null)[] = [];
@@ -481,7 +502,7 @@ const LineCharts = ({ data }: LineChartsProps) => {
     });
 
     return result;
-  }, [dataByStation, stations, rejilla, selectedStations, selectedParams, agregados, variantes,
+  }, [dataByStation, stations, rejilla, selectedStations, selectedParams, agregados, variantes, sinHoraria,
       axisAssignments, lineColors, lineStyles, stationColorOverrides]);
 
   // ── Trazos de alerta: PM2.5 > PM10 ──────────────────────────────────────────
@@ -957,8 +978,32 @@ const LineCharts = ({ data }: LineChartsProps) => {
                                 </label>
                               </div>
                               {VARIANTES_POR_PARAM[param] && (
-                                <div role="group" aria-label={`Promedios de ${param}`} className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                                  <span>Promedios</span>
+                                <div role="group" aria-label={`Series de ${param}`} className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                                  <span>Series</span>
+                                  {(() => {
+                                    // La horaria, aparte de los promedios: apagarla deja
+                                    // solo los promedios. No se apaga si es lo unico
+                                    // que hay, para no dejar el parametro sin nada.
+                                    const on = !sinHoraria.has(param);
+                                    const unica = on && !conPromedio(param);
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={() => alternarHoraria(param)}
+                                        disabled={unica}
+                                        aria-pressed={on}
+                                        title={unica
+                                          ? 'Activa un promedio para poder ocultar la horaria'
+                                          : on ? 'Ocultar el dato horario y dejar solo los promedios' : 'Mostrar el dato horario'}
+                                        className={`px-2 py-0.5 rounded-md border transition-colors disabled:cursor-not-allowed ${
+                                          on ? 'border-slate-800 text-slate-900' : 'border-slate-200 hover:border-slate-400'
+                                        }`}
+                                      >
+                                        Horaria
+                                      </button>
+                                    );
+                                  })()}
+                                  <span className="text-slate-300" aria-hidden="true">|</span>
                                   {VARIANTES_POR_PARAM[param].map(v => {
                                     const on = tieneVariante(param, v);
                                     return (

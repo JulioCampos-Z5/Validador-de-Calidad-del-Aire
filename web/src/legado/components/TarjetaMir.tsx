@@ -1,6 +1,62 @@
-import { CheckCircle2, XCircle, Info } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { CheckCircle2, XCircle, Info, CalendarRange, Copy, Download, Check } from 'lucide-react';
 import type { Mir } from '../services/minutales';
 import { CONTAMINANTES_CRITERIO } from '../services/minutales';
+
+// Días AAAA-MM-DD como «7 oct 2025». En UTC: son fechas sin hora, y con la
+// zona local un día podía salir como el anterior.
+const fmtDia = new Intl.DateTimeFormat('es-MX', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' });
+const dia = (iso: string) => fmtDia.format(new Date(`${iso}T00:00:00Z`)).replace('.', '');
+const tramo = (desde: string, hasta: string) => (desde === hasta ? dia(desde) : `${dia(desde)} – ${dia(hasta)}`);
+const diasEntre = (desde: string, hasta: string) =>
+  Math.round((Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / 86400000) + 1;
+
+/** Lo que no sale en la captura: los botones de la propia captura. */
+const SIN_CAPTURA = 'data-sin-captura';
+
+/**
+ * Ancho de la imagen, en px de pantalla. A todo lo ancho del monitor la tabla
+ * quedaba con columnas muy separadas, y al reducirla para verla en un correo o
+ * un chat el texto salía diminuto y borroso. A este ancho cabe todo y se lee.
+ */
+const ANCHO_CAPTURA = 1040;
+/** Densidad: 3 px por px de pantalla, nítida aunque se haga zoom. */
+const DENSIDAD_CAPTURA = 3;
+
+/**
+ * La tarjeta como PNG, tal como se ve (con el tema puesto). Se carga al usarla:
+ * casi nadie la pide, y así no pesa en la carga del módulo.
+ *
+ * Se captura una copia fuera de pantalla con el ancho fijo, para no mover la
+ * tarjeta que se está mirando.
+ */
+async function capturar(nodo: HTMLElement): Promise<Blob> {
+  const { toBlob } = await import('html-to-image');
+  // Sin esto, si Manrope aún no cargó, la imagen sale con la letra del sistema.
+  await document.fonts.ready;
+
+  const caja = document.createElement('div');
+  caja.style.cssText = `position:fixed;left:-100000px;top:0;width:${ANCHO_CAPTURA}px;pointer-events:none`;
+  const copia = nodo.cloneNode(true) as HTMLElement;
+  copia.style.width = `${ANCHO_CAPTURA}px`;
+  caja.appendChild(copia);
+  document.body.appendChild(caja);
+  try {
+    // El fondo de la tarjeta, para que en modo oscuro no salga transparente.
+    const fondo = getComputedStyle(copia).backgroundColor;
+    const blob = await toBlob(copia, {
+      pixelRatio: DENSIDAD_CAPTURA,
+      width: copia.offsetWidth,
+      height: copia.offsetHeight,
+      backgroundColor: fondo && fondo !== 'rgba(0, 0, 0, 0)' ? fondo : getComputedStyle(document.body).backgroundColor,
+      filter: (n) => !(n instanceof HTMLElement && n.hasAttribute(SIN_CAPTURA)),
+    });
+    if (!blob) throw new Error('No se pudo generar la imagen.');
+    return blob;
+  } finally {
+    caja.remove();
+  }
+}
 
 /**
  * Indicador MIR: representatividad de los datos.
@@ -32,6 +88,46 @@ export default function TarjetaMir({
 }) {
   const hayCeros = mir.estaciones.some((e) => (e.como_cero ?? []).length > 0);
 
+  const tarjeta = useRef<HTMLDivElement>(null);
+  const [captura, setCaptura] = useState<'copiada' | 'guardada' | 'error' | null>(null);
+  const avisar = (estado: typeof captura) => {
+    setCaptura(estado);
+    window.setTimeout(() => setCaptura(null), 2500);
+  };
+  const nombreCaptura = `MIR_${mir.desde ?? ''}_a_${mir.hasta ?? ''}.png`.replace('__a_', '');
+
+  const copiarCaptura = async () => {
+    if (!tarjeta.current) return;
+    try {
+      // La promesa va dentro del ClipboardItem: así el permiso del clic sigue
+      // vigente mientras se genera la imagen.
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': capturar(tarjeta.current) })]);
+      avisar('copiada');
+    } catch {
+      avisar('error');
+    }
+  };
+
+  const descargarCaptura = async () => {
+    if (!tarjeta.current) return;
+    try {
+      const url = URL.createObjectURL(await capturar(tarjeta.current));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombreCaptura;
+      a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      avisar('guardada');
+    } catch {
+      avisar('error');
+    }
+  };
+
+  // Estaciones medidas sobre un tramo distinto al del conjunto: cada una se
+  // compara contra su propio primer y último día, y eso hay que decirlo.
+  const tramoPropio = (e: Mir['estaciones'][number]) =>
+    !!e.desde && !!e.hasta && (e.desde !== mir.desde || e.hasta !== mir.hasta);
+
   const alternar = (c: string) => {
     const siguiente = contaminantes.includes(c)
       ? contaminantes.filter((x) => x !== c)
@@ -49,7 +145,7 @@ export default function TarjetaMir({
   };
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200 shadow-sm">
+    <div ref={tarjeta} className="bg-white rounded-lg border border-slate-200 shadow-sm">
       <div className="p-5 border-b border-slate-200">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -58,8 +154,46 @@ export default function TarjetaMir({
               Representatividad de los datos: promedio de horas válidas por estación,
               contra un umbral del {mir.umbral}%.
             </p>
+            {mir.desde && mir.hasta && (
+              <p className="flex items-center gap-1.5 text-sm text-slate-700 mt-2">
+                <CalendarRange size={15} className="shrink-0 text-slate-500" />
+                <span>
+                  <span className="text-slate-500">Periodo comparado:</span>{' '}
+                  <strong className="font-semibold">{tramo(mir.desde, mir.hasta)}</strong>
+                  <span className="text-slate-500">
+                    {' · '}{diasEntre(mir.desde, mir.hasta).toLocaleString('es-MX')} días
+                    {' · '}{(diasEntre(mir.desde, mir.hasta) * 24).toLocaleString('es-MX')} horas esperadas por canal
+                  </span>
+                </span>
+              </p>
+            )}
           </div>
-          <div className="flex gap-6">
+          <div className="flex items-start gap-6">
+            <div {...{ [SIN_CAPTURA]: '' }} className="flex flex-col items-end gap-1">
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={copiarCaptura}
+                  title="Copiar la tarjeta como imagen, para pegarla en un correo o un chat"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-slate-300 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  <Copy size={14} /> Copiar imagen
+                </button>
+                <button
+                  type="button"
+                  onClick={descargarCaptura}
+                  title={`Descargar la tarjeta como ${nombreCaptura}`}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-slate-300 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  <Download size={14} /> PNG
+                </button>
+              </div>
+              <span role="status" className="h-4 text-xs">
+                {captura === 'copiada' && <span className="inline-flex items-center gap-1 text-green-700"><Check size={12} /> Imagen copiada</span>}
+                {captura === 'guardada' && <span className="inline-flex items-center gap-1 text-green-700"><Check size={12} /> Imagen descargada</span>}
+                {captura === 'error' && <span className="text-red-600">No se pudo generar la imagen</span>}
+              </span>
+            </div>
             <div className="text-right">
               <div className="text-xs text-slate-500 uppercase tracking-wide">Promedio</div>
               <div className="text-2xl font-bold text-slate-800 tabular-nums">
@@ -103,6 +237,13 @@ export default function TarjetaMir({
             <Info size={13} className="mt-0.5 shrink-0" />
             Solo contaminantes criterio de la NOM-172. La meteorología no entra en el indicador.
           </p>
+          {mir.estaciones.some(tramoPropio) && (
+            <p className="flex items-start gap-1.5 text-xs text-amber-700 mt-1">
+              <CalendarRange size={13} className="mt-0.5 shrink-0" />
+              Cada estación se mide entre su primer y su último día con datos; las que traen fecha
+              abajo de su nombre cubren un tramo distinto al del periodo.
+            </p>
+          )}
           {onAlternarCero && (
             <p className="flex items-start gap-1.5 text-xs text-slate-400 mt-1">
               <Info size={13} className="mt-0.5 shrink-0" />
@@ -137,7 +278,21 @@ export default function TarjetaMir({
                 key={e.estacion}
                 className={`border-b border-slate-100 ${e.cumple ? '' : 'bg-red-50/40'}`}
               >
-                <td className="px-4 py-2 font-medium text-slate-700">{e.estacion}</td>
+                <td
+                  className="px-4 py-2 font-medium text-slate-700"
+                  title={e.desde && e.hasta
+                    ? `${e.estacion}: ${tramo(e.desde, e.hasta)} · ${e.horas_esperadas.toLocaleString('es-MX')} horas esperadas`
+                    : undefined}
+                >
+                  {e.estacion}
+                  {/* Solo cuando difiere del periodo: si todas coinciden, repetir
+                      la fecha en cada fila es ruido. */}
+                  {tramoPropio(e) && (
+                    <div className="text-[11px] font-normal text-amber-700 whitespace-nowrap">
+                      {tramo(e.desde!, e.hasta!)}
+                    </div>
+                  )}
+                </td>
                 {mir.contaminantes.map((c) => {
                   const v = e.coberturas[c] ?? null;
                   const forzado = (e.como_cero ?? []).includes(c);

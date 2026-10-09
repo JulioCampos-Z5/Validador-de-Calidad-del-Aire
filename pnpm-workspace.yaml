@@ -1,6 +1,7 @@
 packages:
   - frontend
   - escritorio
+  - escritorio-v2
   - web
 
 # Electron y electron-builder descargan sus binarios en el postinstall;

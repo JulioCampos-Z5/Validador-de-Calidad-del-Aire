@@ -52,6 +52,15 @@ export function numero(valor: unknown): number | null {
 }
 
 /**
+ * Parámetro con que arranca una vista: `preferido` si los datos lo traen; si
+ * no, el primero de `lista` que sí. Ambient Weather, por ejemplo, no tiene O3.
+ */
+export function parametroInicial(datos: Registro[], lista: readonly string[], preferido = 'O3'): string {
+  const conDato = (p: string) => datos.some(d => numero(d[p]) !== null);
+  return conDato(preferido) ? preferido : lista.find(conDato) ?? preferido;
+}
+
+/**
  * Todas las horas entre la primera y la última del conjunto, sin saltos.
  *
  * Si el rango es tan largo que la rejilla se dispara —varios años de datos—,

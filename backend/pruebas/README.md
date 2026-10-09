@@ -28,6 +28,8 @@ python -m unittest pruebas.test_validaciones
 | `test_minutales.py` | El parseo de los `.lsi` del SIMAJ y el indicador MIR |
 | `test_carga_envista.py` | La entrada de datos: los dos layouts de ENVISTA, la fecha día-mes-año, el decimal con coma, las banderas, la conversión al formato BD y la exportación a Excel |
 | `test_endpoints_validacion.py` | El contrato de la API: subida, validación completa de punta a punta, descarga, vista previa de un archivo ya validado y la entrega de la app de escritorio |
+| `test_rutas_historico.py` | La base local de escritorio por HTTP: guardar lo cargado, traer un periodo, la serie de un parámetro, cambios pendientes al importar, el historial de cargas y que fuera del escritorio todo diga «no disponible» |
+| `test_rutas_minutales.py` | Las rutas del SIMAJ con la red simulada: periodo inválido, sin red, periodo vacío, nada por fallas de red, descarga incompleta y la respuesta completa; y los avisos de `red.py` |
 | `test_ias.py` | Índice Aire y Salud y cumplimiento NOM: redondeo half-up, NowCast, bandas por año, suficiencia 18/24, responsable y desempate, AMG, municipios, endpoints y Excel. Incluye una prueba por cada error corregido del script `validador_ENVISTA_IAS_NOM_num.py` |
 
 ---

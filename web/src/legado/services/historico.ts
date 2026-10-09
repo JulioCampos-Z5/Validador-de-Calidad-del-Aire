@@ -84,8 +84,8 @@ export interface AvanceDescarga {
 export const historicoApi = {
   estado: async (): Promise<EstadoHistorico> => (await api.get('/estado')).data,
   /** Trae un periodo guardado; `hasta` excluye, como en los demás orígenes. */
-  cargar: async (desde: string, hasta: string): Promise<ValidationResponse> =>
-    (await api.post('/cargar', { desde, hasta })).data,
+  cargar: async (desde: string, hasta: string, contaminantes?: string[]): Promise<ValidationResponse> =>
+    (await api.post('/cargar', { desde, hasta, contaminantes })).data,
   /** Solo leer: filas de un parámetro en [desde, hasta), sin tocar lo cargado. */
   serie: async (desde: string, hasta: string, parametro: string)
     : Promise<Record<string, string | number | null>[]> =>

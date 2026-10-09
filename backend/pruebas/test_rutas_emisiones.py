@@ -32,12 +32,19 @@ class BaseRutas(unittest.TestCase):
         cliente.solicitar_token = self._token_falso
 
         rutas._sesion.update({'token': None, 'email': None, 'caduca': None})
+        rutas._auto.update({'apagado': False, 'ultimo_fallo': None})
+        self.entorno = {k: os.environ.pop(k) for k in ('EMISIONES_CORREO', 'EMISIONES_CONTRASENA')
+                        if k in os.environ}
         self.cliente = aplicacion.app.test_client()
 
     def tearDown(self):
         almacen.CARPETA_POR_DEFECTO = self.carpeta_original
         cliente.solicitar_token = self.token_original
         rutas._sesion.update({'token': None, 'email': None, 'caduca': None})
+        rutas._auto.update({'apagado': False, 'ultimo_fallo': None})
+        for k in ('EMISIONES_CORREO', 'EMISIONES_CONTRASENA'):
+            os.environ.pop(k, None)
+        os.environ.update(self.entorno)
         for f in os.listdir(self.carpeta):
             os.remove(os.path.join(self.carpeta, f))
         os.rmdir(self.carpeta)
@@ -53,6 +60,42 @@ class BaseRutas(unittest.TestCase):
             'email': 'quien@ejemplo.mx', 'password': password,
             'recordar': recordar,
         })
+
+
+class AccesoAutomatico(BaseRutas):
+    def _credenciales(self, password='correcta'):
+        os.environ['EMISIONES_CORREO'] = 'quien@ejemplo.mx'
+        os.environ['EMISIONES_CONTRASENA'] = password
+
+    def test_sin_credenciales_en_el_entorno_no_entra(self):
+        r = self.cliente.get('/api/emisiones/sesion').get_json()
+        self.assertFalse(r['activa'])
+        self.assertFalse(r['automatica'])
+
+    def test_con_credenciales_entra_solo_y_no_guarda_nada(self):
+        self._credenciales()
+        r = self.cliente.get('/api/emisiones/sesion').get_json()
+        self.assertTrue(r['activa'])
+        self.assertTrue(r['automatica'])
+        self.assertEqual(r['email'], 'quien@ejemplo.mx')
+        self.assertFalse(almacen.hay_guardada(self.carpeta))
+
+    def test_contrasena_mala_no_reintenta_en_cada_peticion(self):
+        self._credenciales('mala')
+        llamadas = []
+        cliente.solicitar_token = lambda e, p: (llamadas.append(1), self._token_falso(e, p))[1]
+        self.cliente.get('/api/emisiones/sesion')
+        self.cliente.get('/api/emisiones/sesion')
+        self.assertEqual(len(llamadas), 1)
+
+    def test_salir_lo_apaga_y_entrar_a_mano_lo_reactiva(self):
+        self._credenciales()
+        self.cliente.get('/api/emisiones/sesion')
+        self.cliente.post('/api/emisiones/salir')
+        r = self.cliente.get('/api/emisiones/sesion').get_json()
+        self.assertFalse(r['activa'])
+        self.entrar()
+        self.assertFalse(rutas._auto['apagado'])
 
 
 class Sesion(BaseRutas):
@@ -84,7 +127,7 @@ class Sesion(BaseRutas):
 
         estado = self.cliente.get('/api/emisiones/sesion').get_json()
         self.assertNotIn('token', estado)
-        self.assertEqual(set(estado), {'activa', 'email', 'caduca', 'recordada'})
+        self.assertEqual(set(estado), {'activa', 'email', 'caduca', 'recordada', 'automatica'})
 
     def test_entrar_sin_recordar_borra_lo_guardado_antes(self):
         """

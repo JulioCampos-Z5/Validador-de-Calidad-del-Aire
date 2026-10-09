@@ -15,8 +15,7 @@ import SelectorEstacionMes from './SelectorEstacionMes';
  *
  * La categoría diaria de la NOM resume el día en un solo color, y ese resumen
  * esconde las horas malas: un día «Aceptable» por promedio puede tener la
- * mañana entera en Mala. La rejilla pone las 24 horas junto a la diaria y la
- * columna «+peor» cuenta las horas que quedaron por encima de ella.
+ * mañana entera en Mala. La rejilla pone las 24 horas junto a la diaria.
  */
 
 const SIN_DATOS = { fondo: '#ffffff', borde: '#d5dbe3' };
@@ -149,7 +148,7 @@ export default function DiaPorHora({ data }: { data: Registro[] }) {
               </p>
               <p className="mt-3">
                 En total, <b className="text-gray-900">{resumen.horas} horas</b> quedaron por encima de la
-                categoría del día. La columna <span className="font-mono">+peor</span> las cuenta.
+                categoría del día.
               </p>
               {resumen.top.length > 0 && (
                 <>
@@ -196,47 +195,7 @@ interface VistaProps {
   onElegir: (fecha: string) => void;
 }
 
-const COLUMNAS = 'grid grid-cols-[3.6rem_5.8rem_2.6rem_repeat(24,minmax(0.9rem,1fr))_3.2rem] items-center gap-x-[2px]';
-
-/**
- * El (?) de la columna «+peor». Se abre al pasar el mouse o con el teclado
- * (es un botón, así que entra en el orden de tabulación), y se despliega
- * hacia abajo y a la izquierda: arriba lo cortaría el borde de la tarjeta.
- */
-function AyudaPeor() {
-  return (
-    <span className="relative group inline-flex normal-case tracking-normal">
-      <button
-        type="button"
-        aria-label="Qué significa +peor"
-        aria-describedby="ayuda-peor"
-        className="w-3.5 h-3.5 rounded-full bg-gray-200 text-gray-600 text-[0.6rem] font-bold leading-none flex items-center justify-center cursor-help focus:outline-none focus:ring-2 focus:ring-blue-500"
-      >
-        ?
-      </button>
-      <span
-        id="ayuda-peor"
-        role="tooltip"
-        className="absolute right-0 top-full mt-1.5 z-20 hidden group-hover:block group-focus-within:block w-72 rounded-lg bg-gray-800 px-3 py-2.5 text-left text-xs font-normal leading-relaxed text-white shadow-xl"
-      >
-        <span className="block font-semibold">Horas peores que la categoría del día</span>
-        <span className="block mt-1">
-          Cuenta cuántas horas del día tuvieron una categoría más desfavorable que la
-          diaria. «Aceptable» con <b>+4</b> quiere decir que 4 horas estuvieron en Mala o peor.
-        </span>
-        <span className="block mt-1.5">
-          Pasa porque no se calculan igual: para PM₁₀ y PM₂.₅ el día es el <b>promedio de 24 h</b> y
-          cada hora es el <b>NowCast</b>, así que el promedio suaviza los picos. Para O₃, NO₂, SO₂ y CO
-          el día toma el máximo, y ninguna hora puede superarlo.
-        </span>
-        <span className="block mt-1.5 text-gray-300">
-          La diaria es la que se reporta; las horas son las que importan para decidir cuándo salir.
-          Vacío: ninguna hora superó al día, o el día no tuvo 18 de 24 horas con dato.
-        </span>
-      </span>
-    </span>
-  );
-}
+const COLUMNAS = 'grid grid-cols-[3.6rem_5.8rem_2.6rem_repeat(24,minmax(0.9rem,1fr))] items-center gap-x-[2px]';
 
 function Rejilla({ dias, elegido, onElegir }: VistaProps) {
   return (
@@ -250,10 +209,6 @@ function Rejilla({ dias, elegido, onElegir }: VistaProps) {
             {h % 6 === 0 ? hh(h) : <span className="sr-only">{hh(h)}</span>}
           </span>
         ))}
-        <span role="columnheader" className="flex items-center justify-end gap-0.5 uppercase tracking-wider text-[0.6rem]">
-          +peor
-          <AyudaPeor />
-        </span>
       </div>
       {dias.map(d => (
         <div
@@ -277,9 +232,6 @@ function Rejilla({ dias, elegido, onElegir }: VistaProps) {
               <Muestra cat={e?.cat ?? null} className="w-full aspect-square rounded-[3px]" />
             </span>
           ))}
-          <span role="cell" className="font-mono text-right text-gray-600">
-            {d.horasPeores > 0 ? `+${d.horasPeores}` : ''}
-          </span>
         </div>
       ))}
     </div>

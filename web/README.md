@@ -9,10 +9,11 @@ Shell con barra de iconos y **un iframe por módulo**. Diseño y decisiones en
 | Shell | Login, menú por rol, tema claro/oscuro, cerrar sesión | `usuarios` |
 | Tablero | Resumen: red, datos cargados, inventario, últimos avisos | lo que esté activo |
 | Validación | Todo lo del tablero del frontend actual: orígenes (archivo ENVISTA, archivo ya validado, SIMAJ, API de Emisiones, base local en escritorio), periodo con calendario, configuración de validaciones, aviso de descarga incompleta, vista previa de datos, estadísticas, exportaciones (validación, MIR, IAS/NOM diario y horario), descarga de la app | `validacion` (Flask) |
-| Gráficas | Las 7 vistas: series, comportamiento horario, distribución, calendario, categorías NOM-172, día × hora, viento | `validacion` |
-| Registros | Indicador MIR (contaminantes, marcar celdas en 0), fallas por canal, errores del servidor | `validacion` |
+| Gráficas | Las 7 vistas: series, comportamiento horario, distribución, calendario, categorías NOM-172, día × hora, viento. Fuente: la red (lo cargado en Validación) o Ambient Weather (promedios horarios en unidades de la red; sin categorías ni día × hora) | `validacion` (y `ambientweather` para esa fuente) |
+| Registros | Pestañas: MIR y fallas (indicador MIR, fallas por canal, errores del servidor), MIDE y MIDE por municipio (las hojas del Excel diario) | `validacion` |
 | Parámetros | Rangos, estaciones y banderas del backend | `validacion` |
 | Estaciones | Mosaico en vivo de puertos, detalle y avisos | `puertos` |
+| Ambient Weather | Estaciones meteorológicas de la cuenta: última lectura, gráfica por métrica y periodo (y comparando estaciones), tabla, CSV y descarga de histórico (admin). Unidades métricas | `ambientweather` |
 | Inventario | Equipos, estaciones, ubicación (estación ↔ almacén) y complementos | `inventario` |
 | Admin | Usuarios, estaciones del detector (token), bitácora | `usuarios` (root/admin) |
 
@@ -26,9 +27,21 @@ Validación y Gráficas, el backend de Python en `:8010` (`VALIDADOR_BACKEND_URL
 ```bash
 pnpm install              # desde la raíz del repo
 pnpm --dir web dev        # http://localhost:3100  (/api se reenvía a :8081)
-pnpm --dir web test       # pruebas de la lógica del mosaico
+pnpm --dir web test       # pruebas unitarias (Vitest + jsdom + Testing Library)
 pnpm --dir web build      # deja web/dist/
 ```
+
+## Pruebas
+
+`pnpm --dir web test` corre todo el front v2 (no el `frontend/` anterior): shell,
+módulos propios, las páginas de `legado/` con sus gráficas (Plotly simulado),
+servicios HTTP (axios con un adaptador falso), el estado compartido y el
+arranque de cada `m/<modulo>/index.html` con el puente al shell simulado.
+
+- La preparación común está en `src/pruebas/preparar.ts` (matchers de Testing
+  Library, IndexedDB falso y lo que jsdom no trae).
+- Cobertura: `pnpm --dir web exec vitest run --coverage`.
+- Cada prueba vive junto a lo que prueba (`*.test.ts(x)`).
 
 ## Estructura
 

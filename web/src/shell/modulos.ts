@@ -3,8 +3,8 @@
 // sale atenuado como "en proceso".
 
 import {
-  IconAdjustmentsHorizontal, IconBroadcast, IconChartLine, IconChecklist, IconLayoutDashboard, IconListDetails,
-  IconPackage, IconSettings, type Icon,
+  IconAdjustmentsHorizontal, IconBroadcast, IconChartLine, IconChecklist, IconCloudRain, IconLayoutDashboard,
+  IconListDetails, IconPackage, IconSettings, type Icon,
 } from '@tabler/icons-react'
 import type { Rol } from '../compartido/tipos'
 
@@ -21,9 +21,10 @@ export const MODULOS: ModuloFront[] = [
   { id: 'tablero', nombre: 'Tablero', icono: IconLayoutDashboard, api: null, pagina: '/m/tablero/' },
   { id: 'validacion', nombre: 'Validación', icono: IconChecklist, api: 'validacion', pagina: '/m/validacion/' },
   { id: 'graficas', nombre: 'Gráficas', icono: IconChartLine, api: 'validacion', pagina: '/m/graficas/' },
-  { id: 'registros', nombre: 'Registros (MIR y fallas)', icono: IconListDetails, api: 'validacion', pagina: '/m/registros/' },
+  { id: 'registros', nombre: 'Registros (MIR, fallas y MIDE)', icono: IconListDetails, api: 'validacion', pagina: '/m/registros/' },
   { id: 'parametros', nombre: 'Parámetros', icono: IconAdjustmentsHorizontal, api: 'validacion', pagina: '/m/parametros/' },
   { id: 'estaciones', nombre: 'Estaciones', icono: IconBroadcast, api: 'puertos', pagina: '/m/estaciones/' },
+  { id: 'ambientweather', nombre: 'Ambient Weather', icono: IconCloudRain, api: 'ambientweather', pagina: '/m/ambientweather/' },
   { id: 'inventario', nombre: 'Inventario', icono: IconPackage, api: 'inventario', pagina: '/m/inventario/' },
   { id: 'admin', nombre: 'Admin', icono: IconSettings, api: 'usuarios', pagina: '/m/admin/', roles: ['root', 'admin'] },
 ]

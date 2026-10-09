@@ -20,7 +20,7 @@ import registros
 import ultimo
 
 from .calculo import (AMG, CATEGORIAS, CONTAMINANTES, calcular_diario, calcular_horario,
-                      exportar_diario, exportar_horario)
+                      calcular_municipios, exportar_diario, exportar_horario, mide, mide_municipio)
 
 bp = Blueprint('ias', __name__, url_prefix='/api/ias')
 
@@ -133,6 +133,28 @@ def categorias():
         dias.append({'fecha': fecha, 'horas': horas, 'diaria': diaria})
 
     return jsonify({'estacion': estacion, 'mes': mes, 'dias': dias})
+
+
+@bp.route('/mide', methods=['GET'])
+def mide_tablas():
+    """
+    Las dos hojas MIDE del Excel diario, para verlas en pantalla: días Buena +
+    Aceptable por mes en el AMG y por municipio. Mismo cálculo que el Excel.
+    """
+    try:
+        r = calculado()
+        if r is None:
+            return SIN_DATOS
+        _, diario = r
+        if diario.empty:
+            return jsonify({'amg': [], 'municipios': []})
+        amg = mide(diario)
+        mun = mide_municipio(calcular_municipios(diario))
+    except Exception as e:
+        registros.anotar_error('IAS: falló el MIDE', e)
+        return jsonify({'error': f'No se pudo calcular el MIDE: {e}'}), 500
+    return jsonify({'amg': amg.to_dict(orient='records'),
+                    'municipios': mun.to_dict(orient='records')})
 
 
 def _enviar(escribir, nombre: str):

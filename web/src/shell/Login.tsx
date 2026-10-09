@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { login, ErrorApi } from '../compartido/api'
 import type { Sesion } from '../compartido/tipos'
+import { guardarRecordar, leerRecordar } from './preferencias'
 
-export function Login({ alEntrar }: { alEntrar: (s: Sesion) => void }) {
+export function Login({ alEntrar }: { alEntrar: (s: Sesion, recordar: boolean) => void }) {
   const [correo, setCorreo] = useState('')
   const [contrasena, setContrasena] = useState('')
+  const [recordar, setRecordar] = useState(leerRecordar)
   const [error, setError] = useState('')
   const [enviando, setEnviando] = useState(false)
 
@@ -17,7 +19,9 @@ export function Login({ alEntrar }: { alEntrar: (s: Sesion) => void }) {
     setEnviando(true)
     setError('')
     try {
-      alEntrar(await login(correo.trim(), contrasena))
+      const s = await login(correo.trim(), contrasena, recordar)
+      guardarRecordar(recordar)
+      alEntrar(s, recordar)
     } catch (err) {
       setError(err instanceof ErrorApi ? err.message : 'No se pudo iniciar sesión')
       setEnviando(false)
@@ -40,6 +44,11 @@ export function Login({ alEntrar }: { alEntrar: (s: Sesion) => void }) {
           <span>Contraseña</span>
           <input type="password" autoComplete="current-password" value={contrasena}
             onChange={(e) => { setContrasena(e.target.value); setError('') }} />
+        </label>
+
+        <label className="login-recordar" title="La sesión se guarda en este equipo hasta 30 días, o hasta que salgas. No la marques en una computadora compartida.">
+          <input type="checkbox" checked={recordar} onChange={(e) => setRecordar(e.target.checked)} />
+          Mantener la sesión iniciada
         </label>
 
         {error && <p className="login-error" role="alert">{error}</p>}

@@ -33,11 +33,12 @@ async function pedir<T>(ruta: string, init: RequestInit): Promise<T> {
   return leer<T>(resp)
 }
 
-export function login(correo: string, contrasena: string) {
+// recordar: la API da un token de larga duracion (30 dias por omision).
+export function login(correo: string, contrasena: string, recordar = false) {
   return pedir<import('./tipos').Sesion>('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ correo, contrasena }),
+    body: JSON.stringify({ correo, contrasena, recordar }),
   })
 }
 

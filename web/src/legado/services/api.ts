@@ -1,4 +1,5 @@
 import { crearApi } from '../sesion';
+import type { Falla, Mir } from './minutales';
 
 const API_BASE_URL = '/api';
 
@@ -63,6 +64,9 @@ export interface ValidationResponse {
   summary: ValidationSummary;
   data_preview: Record<string, any>[];
   estadisticas_detalladas: EstadisticaDetallada[];
+  /** Indicador MIR de lo cargado; null si el archivo no trae estación o fecha. */
+  mir?: Mir | null;
+  fallas?: Falla[];
 }
 
 export interface StatsResponse {
@@ -165,14 +169,16 @@ export const apiService = {
   validateFull: async (
     filename: string,
     config?: Record<string, any>,
-    revalidate: boolean = true
+    revalidate: boolean = true,
+    // Los que entran en el MIR; sin ellos, el backend usa los seis criterio.
+    contaminantes?: string[],
   ): Promise<ValidationResponse> => {
-    const response = await api.post('/validate/full', { filename, config, revalidate });
+    const response = await api.post('/validate/full', { filename, config, revalidate, contaminantes });
     return response.data;
   },
 
-  previewValidated: async (filename: string): Promise<ValidationResponse> => {
-    const response = await api.post('/preview-validated', { filename });
+  previewValidated: async (filename: string, contaminantes?: string[]): Promise<ValidationResponse> => {
+    const response = await api.post('/preview-validated', { filename, contaminantes });
     return response.data;
   },
 

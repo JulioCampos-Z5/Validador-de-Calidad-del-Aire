@@ -15,6 +15,8 @@ import (
 	"os"
 	"strings"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"validador-api/internal/platform/auth"
 	"validador-api/internal/platform/config"
 	"validador-api/internal/platform/db"
@@ -22,6 +24,18 @@ import (
 )
 
 func main() {
+	// hash-contrasena: imprime el hash bcrypt (contrasena por stdin). Es lo que
+	// lleva la app de escritorio en API_USUARIO_INICIAL_HASH.
+	if len(os.Args) >= 2 && os.Args[1] == "hash-contrasena" {
+		linea, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		h, err := bcrypt.GenerateFromPassword([]byte(strings.TrimRight(linea, "\r\n")), bcrypt.DefaultCost)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(h))
+		return
+	}
 	if len(os.Args) < 2 || os.Args[1] != "crear-usuario" {
 		fmt.Fprintln(os.Stderr, "uso: admin crear-usuario -nombre N -correo C -rol root|admin|tecnico|user  (contraseña por stdin)")
 		os.Exit(2)

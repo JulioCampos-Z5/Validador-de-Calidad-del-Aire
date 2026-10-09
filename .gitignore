@@ -73,5 +73,6 @@ coverage/
 node_modules/
 dist/
 salida/
+salida-v2/
 __pycache__/
 validador_ENVISTA_IAS_NOM_num.py

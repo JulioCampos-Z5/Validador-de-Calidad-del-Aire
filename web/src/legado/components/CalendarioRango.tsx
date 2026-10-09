@@ -68,6 +68,14 @@ const ATAJOS: { etiqueta: string; dias: number }[] = [
   { etiqueta: '2 años', dias: 730 },
 ];
 
+/**
+ * Años que se ofrecen en la lista: el actual y los nueve anteriores. Un año
+ * completo son 365 o 366 días, justo lo que admite la API de Emisiones; no hay
+ * un año mínimo común a los orígenes (la base local empieza en 2024 y lo dice
+ * ella misma al elegir antes).
+ */
+const ANIOS_EN_LISTA = 10;
+
 interface PropsPanel {
   desde: string;
   hasta: string;
@@ -184,15 +192,37 @@ export function PanelCalendario({ desde, hasta, onRango }: PropsPanel) {
   /**
    * Un atajo deja el rango elegido, no lo aplica: sigue haciendo falta aceptar.
    */
-  const atajo = (dias: number) => {
-    const f = new Date();
-    const ini = new Date();
-    ini.setDate(ini.getDate() - (dias - 1));
+  const ponerRango = (ini: Date, f: Date) => {
     setInicio(ini);
     setFin(f);
     setMesInicio(new Date(ini.getFullYear(), ini.getMonth(), 1));
     setMesFin(new Date(f.getFullYear(), f.getMonth(), 1));
   };
+
+  const atajo = (dias: number) => {
+    const ini = new Date();
+    ini.setDate(ini.getDate() - (dias - 1));
+    ponerRango(ini, new Date());
+  };
+
+  // Del 1 de enero de este año a hoy.
+  const loQueVaDelAnio = () => ponerRango(new Date(hoy.getFullYear(), 0, 1), new Date());
+
+  // Un año calendario completo; el actual, hasta hoy (no hay datos del futuro).
+  const anioCompleto = (anio: number) =>
+    ponerRango(new Date(anio, 0, 1), anio === hoy.getFullYear() ? new Date() : new Date(anio, 11, 31));
+
+  const anios = Array.from({ length: ANIOS_EN_LISTA }, (_, i) => hoy.getFullYear() - i);
+  // El año que está puesto, si el rango es exactamente un año calendario: así
+  // la lista muestra lo elegido en vez de volver a «Año…».
+  const anioElegido = inicio && fin && inicio.getMonth() === 0 && inicio.getDate() === 1
+    && inicio.getFullYear() === fin.getFullYear()
+    && (mismoDia(fin, new Date(fin.getFullYear(), 11, 31))
+      || (fin.getFullYear() === hoy.getFullYear() && mismoDia(fin, hoy)))
+    ? String(inicio.getFullYear())
+    : '';
+  const esLoQueVa = !!(inicio && fin && mismoDia(inicio, new Date(hoy.getFullYear(), 0, 1)) && mismoDia(fin, hoy));
+  const claseAtajo = 'flex-1 min-w-[4rem] px-2 py-1.5 rounded-md text-sm font-medium border transition-colors';
 
   const ponerInicio = (dia: Date) => {
     if (Number.isNaN(dia.getTime()) || dia > hoy) return;
@@ -220,17 +250,46 @@ export function PanelCalendario({ desde, hasta, onRango }: PropsPanel) {
   return (
     <>
       <div className="px-5 py-4">
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-2">
           {ATAJOS.map(({ etiqueta, dias: d }) => (
             <button
               key={d}
               type="button"
               onClick={() => atajo(d)}
-              className="flex-1 min-w-[4rem] px-2 py-1.5 rounded-md text-sm font-medium border border-slate-300 text-slate-600 bg-white hover:bg-slate-100 transition-colors"
+              className={`${claseAtajo} border-slate-300 text-slate-600 bg-white hover:bg-slate-100`}
             >
               {etiqueta}
             </button>
           ))}
+        </div>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            type="button"
+            onClick={loQueVaDelAnio}
+            aria-pressed={esLoQueVa}
+            title={`Del 1 de enero de ${hoy.getFullYear()} a hoy`}
+            className={`${claseAtajo} bg-white hover:bg-slate-100 ${
+              esLoQueVa ? 'border-slate-800 text-slate-900' : 'border-slate-300 text-slate-600'
+            }`}
+          >
+            Lo que va del año
+          </button>
+          <select
+            value={anioElegido}
+            onChange={(e) => e.target.value && anioCompleto(Number(e.target.value))}
+            aria-label="Elegir un año completo"
+            title="Un año calendario completo, del 1 de enero al 31 de diciembre"
+            className={`${claseAtajo} bg-white hover:bg-slate-100 cursor-pointer ${
+              anioElegido ? 'border-slate-800 text-slate-900' : 'border-slate-300 text-slate-600'
+            }`}
+          >
+            <option value="">Año completo…</option>
+            {anios.map((a) => (
+              <option key={a} value={a}>
+                {a === hoy.getFullYear() ? `${a} (hasta hoy)` : a}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="flex flex-wrap gap-6">

@@ -80,7 +80,7 @@ export interface ConfigValidacion {
 
 interface Estado {
   resultado: ValidationResponse | null;
-  /** Solo lo hay cuando los datos vienen del SIMAJ: necesita las horas esperadas. */
+  /** Indicador MIR de lo cargado, venga de donde venga. */
   mir: Mir | null;
   /** Sesión con la API de Emisiones. El token vive en el backend, no aquí. */
   sesionEmisiones: SesionEmisiones;
@@ -306,14 +306,15 @@ export function DatosProvider({ children, inicial, alCambiar }: {
     try {
       const subida = await apiService.uploadFile(archivo);
       const r = modo === 'validado'
-        ? await apiService.previewValidated(subida.filename)
-        : await apiService.validateFull(subida.filename, configBackend(), revalidar);
+        ? await apiService.previewValidated(subida.filename, contaminantesMir)
+        : await apiService.validateFull(subida.filename, configBackend(), revalidar, contaminantesMir);
 
       setResultado(r);
-      // Un archivo no permite calcular el MIR: no dice qué horas debería haber
-      // en el periodo, solo las que trae.
-      setMir(null);
-      setFallas([]);
+      // El MIR de un archivo se calcula igual que el del SIMAJ: las horas
+      // esperadas salen de las fechas de cada estación (ver minutales/mir.py).
+      setMir(r.mir ?? null);
+      setFallas(r.fallas ?? []);
+      setComoCeroMir([]);
       setOrigen(modo);
       setDescripcion(archivo.name);
       // En la app de escritorio lo importado se guarda solo en la base local.
@@ -329,7 +330,7 @@ export function DatosProvider({ children, inicial, alCambiar }: {
     } finally {
       setCargando(false);
     }
-  }, [configBackend, revalidar]);
+  }, [configBackend, revalidar, contaminantesMir]);
 
   /**
    * Descarga del SIMAJ.
@@ -413,10 +414,7 @@ export function DatosProvider({ children, inicial, alCambiar }: {
         configBackend(),
       );
       setResultado(r);
-      // El MIR sale tambien de aqui: lo que hace falta para calcularlo es el
-      // periodo pedido —las horas que deberia haber—, y eso lo sabemos igual
-      // que con el SIMAJ. Lo que no da para MIR es un archivo suelto, que no
-      // dice que tramo pretende cubrir.
+      // El MIR sale tambien de aqui, calculado igual que con el SIMAJ.
       setMir(r.mir ?? null);
       setFallas(r.fallas ?? []);
       setComoCeroMir([]);
@@ -446,11 +444,12 @@ export function DatosProvider({ children, inicial, alCambiar }: {
     setExito(null);
     try {
       const consultable = rangoConsultable(rango ?? periodo);
-      const r = await historicoApi.cargar(consultable.desde, consultable.hasta);
+      const r = await historicoApi.cargar(consultable.desde, consultable.hasta, contaminantesMir);
       setResultado(r);
-      // Lo guardado no dice qué horas debería haber: sin MIR, como un archivo.
-      setMir(null);
-      setFallas([]);
+      // Lo guardado ya está validado: el backend cuenta sus banderas de
+      // lectura para que el MIR mida lo mismo que con el SIMAJ.
+      setMir(r.mir ?? null);
+      setFallas(r.fallas ?? []);
       setComoCeroMir([]);
       setOrigen('historico');
       setDescripcion(`Base local · ${r.summary.fecha_inicio} a ${r.summary.fecha_fin}`);
@@ -464,7 +463,7 @@ export function DatosProvider({ children, inicial, alCambiar }: {
     } finally {
       setCargando(false);
     }
-  }, [periodo]);
+  }, [periodo, contaminantesMir]);
 
   const cambiarContaminantesMir = useCallback(async (nuevos: string[]) => {
     setContaminantesMir(nuevos);

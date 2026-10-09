@@ -5,7 +5,7 @@ import { useDatos } from '../estado/DatosContexto';
 import { historicoApi } from '../services/historico';
 import {
   rejillaHoraria, serieEnRejilla, agregadoZona,
-  promedioPorHoraDelDia, numero, type Registro,
+  promedioPorHoraDelDia, numero, parametroInicial, type Registro,
 } from '../graficas/series';
 import {
   CONTAMINANTES, METEOROLOGICOS, COLORES_ESTACIONES,
@@ -97,7 +97,7 @@ export default function PerfilHorario({ data }: Props) {
   const rejilla = useMemo(() => rejillaHoraria(data), [data]);
 
   const [ambito, setAmbito] = useState<string>(AMG_PROMEDIO);
-  const [parametro, setParametro] = useState('O3');
+  const [parametro, setParametro] = useState(() => parametroInicial(data, [...CONTAMINANTES, ...METEOROLOGICOS]));
   const [cruce, setCruce] = useState<string>(NINGUNO);
 
   // Comparación de periodos: el mismo perfil, una curva por rango de fechas.

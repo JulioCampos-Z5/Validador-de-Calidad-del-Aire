@@ -1,0 +1,58 @@
+/* Ambient Weather: lo propio del modulo. El resto sale de componentes.css y
+   del mosaico de Estaciones (mismas tarjetas). */
+
+.filtros { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Mosaico y tarjetas, como en Estaciones */
+.mosaico { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.tarjeta {
+  text-align: left; cursor: pointer; min-width: 0; font: inherit; color: inherit;
+  background: var(--panel); border: 1px solid var(--linea); border-radius: 12px; padding: 12px 14px;
+  transition: border-color 0.15s;
+}
+.tarjeta:hover { border-color: var(--tx3); }
+.tarjeta:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.tarjeta.borde-er { border-color: var(--er-linea); }
+.tarjeta.borde-wa { border-color: var(--wa-linea); }
+.tarjeta.abierta { border-color: var(--tx); }
+.tarjeta-titulo { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 600; }
+.aw-temp { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin: 4px 0 2px; }
+
+.detalle { background: var(--panel); border: 1px solid var(--linea); border-radius: 14px; padding: 16px 18px; }
+.detalle-cabecera { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.detalle-titulo { font-size: 17px; font-weight: 600; margin: 0; }
+
+.aw-viejo { display: flex; align-items: center; gap: 8px; color: var(--tx); border: 1px solid var(--wa-linea); }
+.aw-dir { display: inline-flex; align-items: center; gap: 2px; margin-left: 8px; font-size: 13px; font-weight: 500; color: var(--tx2); }
+
+.aw-controles { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; margin-bottom: 10px; }
+.aw-select { flex-direction: row; }
+.aw-select select { height: 32px; width: auto; min-width: 190px; }
+.aw-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--tx2); cursor: pointer; }
+/* Tabla de lecturas: encabezado y fecha fijos al desplazar */
+.aw-barra { margin-bottom: 8px; }
+.aw-tabla { max-height: 60vh; overflow: auto; transition: opacity 0.15s; }
+.aw-tabla.aw-cargando { opacity: 0.55; }
+.aw-tabla th { position: sticky; top: 0; z-index: 1; background: var(--panel); }
+.aw-tabla .aw-fija { position: sticky; left: 0; z-index: 1; background: var(--panel); }
+.aw-tabla th.aw-fija { z-index: 2; }
+.aw-tabla tr:hover td { background: var(--suave); }
+.aw-orden { cursor: pointer; user-select: none; }
+.aw-orden:hover { color: var(--tx); }
+.aw-flecha { color: var(--tx3); opacity: 0.7; font-weight: 400; }
+.aw-unidad { font-weight: 400; }
+.aw-selector { position: relative; }
+.aw-menu {
+  position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; width: 240px; max-height: 320px; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--linea); border-radius: 10px; padding: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); display: flex; flex-direction: column;
+}
+.aw-menu .aw-check { padding: 5px 8px; border-radius: 6px; }
+.aw-menu .aw-check:hover { background: var(--suave); }
+.aw-tamano { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.aw-tamano select { height: 30px; border-radius: 8px; border: 1px solid var(--boton-borde); background: var(--bg); color: var(--tx); padding: 0 6px; }
+.aw-paginas { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.aw-pagina { align-self: center; padding: 0 8px; }
+.boton:disabled { opacity: 0.45; cursor: default; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

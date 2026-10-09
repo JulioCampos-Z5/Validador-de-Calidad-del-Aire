@@ -22,6 +22,14 @@ cosa a sabiendas.
 
 La contraseña se usa para pedir el token y se descarta en el acto. No se guarda
 nunca, ni en memoria ni en disco.
+
+Acceso automático (opcional)
+----------------------------
+Si el entorno trae `EMISIONES_CORREO` y `EMISIONES_CONTRASENA` (en la app de
+escritorio, desde config.env), el backend pide el token solo cuando no hay
+sesión: al abrir, al caducar el token. Es decisión de quien llena config.env: la
+contraseña queda en ese archivo, en su perfil, y nunca en el instalador ni en
+el repositorio. «Salir» lo apaga hasta el siguiente arranque o un acceso a mano.
 """
 
 from __future__ import annotations
@@ -111,6 +119,41 @@ def _hay_sesion() -> bool:
     )
 
 
+# Acceso automático con las credenciales del entorno.
+_auto: dict = {'apagado': False, 'ultimo_fallo': None}
+# Con una contraseña equivocada no se reintenta en cada petición: la API podría
+# bloquear la cuenta por intentos.
+ESPERA_TRAS_FALLO = timedelta(minutes=10)
+
+
+def _credenciales_entorno() -> tuple[str, str] | None:
+    email = os.environ.get('EMISIONES_CORREO', '').strip()
+    password = os.environ.get('EMISIONES_CONTRASENA', '')
+    return (email, password) if email and password else None
+
+
+def _asegurar_sesion() -> bool:
+    """Sesión viva; si no hay y el entorno trae credenciales, entra solo."""
+    if _hay_sesion():
+        return True
+    cred = _credenciales_entorno()
+    if not cred or _auto['apagado']:
+        return False
+    fallo = _auto['ultimo_fallo']
+    if fallo and horario.ahora() - fallo < ESPERA_TRAS_FALLO:
+        return False
+    try:
+        obtenido = cliente.solicitar_token(*cred)
+    except Exception as e:
+        _auto['ultimo_fallo'] = horario.ahora()
+        registros.anotar_error('Emisiones: falló el acceso automático con EMISIONES_CORREO/EMISIONES_CONTRASENA', e)
+        return False
+    _auto['ultimo_fallo'] = None
+    with _candado:
+        _sesion.update({'token': obtenido['token'], 'email': cred[0], 'caduca': obtenido['caduca']})
+    return True
+
+
 def _estado_sesion() -> dict:
     """Lo que se le cuenta al frontend. Nunca incluye el token."""
     return {
@@ -118,11 +161,13 @@ def _estado_sesion() -> dict:
         'email': _sesion['email'] if _hay_sesion() else None,
         'caduca': _sesion['caduca'].isoformat() if _hay_sesion() and _sesion['caduca'] else None,
         'recordada': almacen.hay_guardada(),
+        'automatica': _credenciales_entorno() is not None and not _auto['apagado'],
     }
 
 
 @bp.route('/sesion', methods=['GET'])
 def sesion():
+    _asegurar_sesion()
     return jsonify(_estado_sesion())
 
 
@@ -148,6 +193,7 @@ def login():
         return jsonify({'error': f'Error inesperado al iniciar sesión: {e}'}), 500
 
     with _candado:
+        _auto['apagado'] = False
         _sesion.update({
             'token': obtenido['token'],
             'email': email,
@@ -170,6 +216,8 @@ def salir():
     with _candado:
         _sesion.update({'token': None, 'email': None, 'caduca': None})
         almacen.olvidar()
+        # Si no, la siguiente consulta volvería a entrar sola con config.env.
+        _auto['apagado'] = True
     return jsonify({'success': True, **_estado_sesion()})
 
 
@@ -218,7 +266,7 @@ def muestra():
     Por defecto una hora y tres registros: lo justo para ver la forma sin
     volcar cientos de miles de filas en el navegador.
     """
-    if not _hay_sesion():
+    if not _asegurar_sesion():
         return jsonify({'error': 'No hay sesión. Inicia sesión en la API de Emisiones.'}), 401
 
     horas = max(1, min(int(request.args.get('horas', 1)), 24))
@@ -251,7 +299,7 @@ def descargar():
     from app import (validar_datos_completo, crear_resumen_validacion,
                      exportar_resultados, app as flask_app)
 
-    if not _hay_sesion():
+    if not _asegurar_sesion():
         return jsonify({'error': 'No hay sesión. Inicia sesión en la API de Emisiones.'}), 401
 
     cuerpo = request.get_json(silent=True) or {}

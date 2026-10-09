@@ -36,11 +36,31 @@ export interface ResumenIas {
   meses: Record<string, string[]>;
 }
 
+/** Una fila de las hojas MIDE: días Buena + Aceptable de un mes (o TOTAL). */
+export interface FilaMide {
+  MES: string;
+  MUNICIPIO?: string;
+  IAS_GLOBAL_CAT_DIA_BUENA_ACEPTABLE: number;
+  IAS_O3_CAT_DIA_BUENA_ACEPTABLE: number;
+  IAS_PM10_CAT_DIA_BUENA_ACEPTABLE: number;
+  'IAS_PM2.5_CAT_DIA_BUENA_ACEPTABLE': number;
+}
+
+export interface Mide {
+  /** Hoja «MIDE»: AMG, 12 meses + TOTAL. */
+  amg: FilaMide[];
+  /** Hoja «MIDE-municipio»: cada municipio por mes y su TOTAL. */
+  municipios: FilaMide[];
+}
+
 export const iasApi = {
   resumen: async (): Promise<ResumenIas> => (await api.get('/resumen')).data,
 
   categorias: async (estacion: string, mes: string): Promise<DiaIas[]> =>
     (await api.get('/categorias', { params: { estacion, mes } })).data.dias,
+
+  /** Las dos hojas MIDE del Excel diario, en JSON. */
+  mide: async (): Promise<Mide> => (await api.get('/mide')).data,
 
   /** Excel horario: indicadores, índice por contaminante y global, cumplimiento NOM. */
   urlHorario: '/api/ias/horario.xlsx',

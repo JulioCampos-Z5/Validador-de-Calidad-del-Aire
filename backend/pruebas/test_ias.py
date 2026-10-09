@@ -233,6 +233,18 @@ class Endpoints(unittest.TestCase):
                                  'Data_Diaria_Municipio', 'Resumen_Anual_Mun_Contam',
                                  'Resumen_Anual_Municipio', 'MIDE', 'MIDE-municipio'])
 
+    def test_mide_en_json(self):
+        self._cargar()
+        r = self.cliente.get('/api/ias/mide').get_json()
+        self.assertEqual([f['MES'] for f in r['amg']][-1], 'TOTAL')
+        self.assertEqual(len(r['amg']), 13)
+        sep = next(f for f in r['amg'] if f['MES'] == 'Septiembre')
+        self.assertEqual(sep['IAS_GLOBAL_CAT_DIA_BUENA_ACEPTABLE'], 2)   # 2 días, O3 ≤ Aceptable
+        self.assertIn('Guadalajara', {f['MUNICIPIO'] for f in r['municipios']})
+
+    def test_mide_sin_datos_es_409(self):
+        self.assertEqual(self.cliente.get('/api/ias/mide').status_code, 409)
+
     def test_excel_horario(self):
         self._cargar()
         r = self.cliente.get('/api/ias/horario.xlsx')

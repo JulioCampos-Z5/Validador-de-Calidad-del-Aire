@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
+	"validador-api/internal/platform/db"
 )
 
 // Repository es el unico que habla con la base semadet.
@@ -65,11 +65,18 @@ func (r *Repository) Listar(ctx context.Context) ([]Usuario, error) {
 	return res, rows.Err()
 }
 
+// Contar usuarios: cero quiere decir base recien creada.
+func (r *Repository) Contar(ctx context.Context) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM usuarios`).Scan(&n)
+	return n, err
+}
+
 func (r *Repository) Crear(ctx context.Context, n NuevoUsuario, hash string) (int64, error) {
 	res, err := r.db.ExecContext(ctx,
 		`INSERT INTO usuarios (nombre, correo, contrasena, rol) VALUES (?, ?, ?, ?)`,
 		n.Nombre, n.Correo, hash, n.Rol)
-	if esDuplicado(err) {
+	if db.EsDuplicado(err) {
 		return 0, ErrDuplicado
 	}
 	if err != nil {
@@ -157,11 +164,6 @@ func (r *Repository) Bitacora(ctx context.Context, limite int) ([]Registro, erro
 		res = append(res, reg)
 	}
 	return res, rows.Err()
-}
-
-func esDuplicado(err error) bool {
-	var e *mysql.MySQLError
-	return errors.As(err, &e) && e.Number == 1062
 }
 
 func nuloSiVacio(b []byte) any {

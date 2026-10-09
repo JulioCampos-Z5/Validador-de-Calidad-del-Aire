@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Plotly from '../graficas/plotly';
 import { Wind } from 'lucide-react';
-import { marcaDeTiempo, numero, type Registro } from '../graficas/series';
-import { COLORES_ESTACIONES } from '../constants';
+import { marcaDeTiempo, numero, porHora, type Registro } from '../graficas/series';
+import { COLORES_ESTACIONES, getUnitsAndName } from '../constants';
 
 /**
  * Velocidad y dirección del viento con flechas (port de `plot_wind_arrows`
@@ -18,6 +18,10 @@ import { COLORES_ESTACIONES } from '../constants';
  * el viento (convención meteorológica de WD: 0° = viento del norte, flecha
  * hacia arriba). Se puede invertir para que apunte hacia dónde va, que es como
  * se lee el transporte de contaminantes.
+ *
+ * Los contaminantes (partículas y gases) van en las mismas flechas, no en
+ * líneas aparte: cada flecha toma el color de la concentración en esa hora y
+ * estación, y se ve de qué dirección llega el aire más cargado.
  */
 
 type Sentido = 'viene' | 'va';
@@ -25,6 +29,12 @@ type Sentido = 'viene' | 'va';
 const PASOS = [1, 2, 3, 6, 12];
 /** Más flechas que esto se vuelven una mancha y el navegador se arrastra. */
 const MAXIMO_FLECHAS = 12000;
+
+const PARTICULAS = ['PM10', 'PM2.5'];
+const GASES = ['O3', 'NO', 'NO2', 'NOX', 'SO2', 'CO'];
+
+// Escala para colorear las flechas: amarillo (poco) a rojo oscuro (mucho).
+const ESCALA = [[0, '#fed976'], [0.25, '#feb24c'], [0.5, '#fd8d3c'], [0.75, '#e31a1c'], [1, '#800026']];
 
 const PUNTOS_CARDINALES = [
   'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
@@ -37,6 +47,13 @@ function cardinal(grados: number): string {
 
 const colorDe = (estacion: string, i: number) =>
   COLORES_ESTACIONES[estacion] ?? `hsl(${(i * 47) % 360} 65% 45%)`;
+
+/** Percentil p (0-1) de una lista ya filtrada de numeros. */
+function percentil(valores: number[], p: number): number {
+  if (valores.length === 0) return 0;
+  const orden = [...valores].sort((a, b) => a - b);
+  return orden[Math.min(orden.length - 1, Math.floor(p * (orden.length - 1)))];
+}
 
 interface Lectura { t: string; hora: number; ws: number; wd: number }
 
@@ -57,6 +74,23 @@ export default function VientoFlechas({ data }: { data: Registro[] }) {
     return indice;
   }, [data]);
 
+  // Todas las filas por estación, para leer los contaminantes de cada hora.
+  const filasPorEstacion = useMemo(() => {
+    const indice: Record<string, Registro[]> = {};
+    for (const fila of data) (indice[fila.STATION] ??= []).push(fila);
+    return indice;
+  }, [data]);
+
+  // Los contaminantes que traen al menos un número: los demás no se ofrecen.
+  const medidos = useMemo(() => {
+    const s = new Set<string>();
+    for (const fila of data) {
+      for (const p of [...PARTICULAS, ...GASES]) if (!s.has(p) && numero(fila[p]) !== null) s.add(p);
+      if (s.size === PARTICULAS.length + GASES.length) break;
+    }
+    return s;
+  }, [data]);
+
   const estaciones = useMemo(() => Object.keys(porEstacion).sort(), [porEstacion]);
   const [elegidas, setElegidas] = useState<Set<string>>(new Set());
   useEffect(() => { setElegidas(new Set(estaciones)); }, [estaciones]);
@@ -64,6 +98,8 @@ export default function VientoFlechas({ data }: { data: Registro[] }) {
   const [sentido, setSentido] = useState<Sentido>('viene');
   const [tamano, setTamano] = useState(12);
   const [paso, setPaso] = useState<number | 'auto'>('auto');
+  // '' = cada flecha con el color de su estación.
+  const [colorPor, setColorPor] = useState('');
 
   const totalElegidas = useMemo(
     () => [...elegidas].reduce((s, e) => s + (porEstacion[e]?.length ?? 0), 0),
@@ -77,37 +113,82 @@ export default function VientoFlechas({ data }: { data: Registro[] }) {
   useEffect(() => {
     if (!ref.current) return;
     const trazas: object[] = [];
+    const layout: Record<string, unknown> = {};
+
+    // --- Flechas ---
+    // Con «color por contaminante», el valor de esa hora y estación; la
+    // escala se corta en el percentil 98 para que un pico aislado no deje
+    // todo lo demás del mismo color.
+    const valorDe = (est: string, t: string): number | null => {
+      if (!colorPor) return null;
+      const fila = porHora(filasPorEstacion[est] ?? []).get(t);
+      return fila ? numero(fila[colorPor]) : null;
+    };
+    let cmax = 0;
+    if (colorPor) {
+      const todos: number[] = [];
+      estaciones.forEach(est => {
+        if (!elegidas.has(est)) return;
+        for (const l of porEstacion[est] ?? []) {
+          if (l.hora % pasoEfectivo !== 0) continue;
+          const v = valorDe(est, l.t);
+          if (v !== null) todos.push(v);
+        }
+      });
+      cmax = percentil(todos, 0.98) || 1;
+      const info = getUnitsAndName(colorPor);
+      layout.coloraxis = {
+        colorscale: ESCALA, cmin: 0, cmax,
+        colorbar: { title: { text: `${colorPor} (${info.unit})`, side: 'right' }, thickness: 12, len: 0.6, y: 0.62, x: 1.02 },
+      };
+    }
+
     estaciones.forEach((est, i) => {
       if (!elegidas.has(est)) return;
       const color = colorDe(est, i);
       const lecturas = (porEstacion[est] ?? []).filter(l => l.hora % pasoEfectivo === 0);
-      trazas.push({
+      const flechas = (ls: Lectura[], marcador: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
         type: 'scatter',
         mode: 'markers',
-        x: lecturas.map(l => l.t),
-        y: lecturas.map(l => l.ws),
-        customdata: lecturas.map(l => [l.wd, cardinal(l.wd)]),
+        x: ls.map(l => l.t),
+        y: ls.map(l => l.ws),
+        customdata: ls.map(l => [l.wd, cardinal(l.wd), colorPor ? valorDe(est, l.t) ?? 'sin dato' : '']),
         marker: {
           symbol: 'arrow-wide',
           // Plotly dibuja la flecha hacia arriba y la gira en sentido horario,
           // igual que se miden los grados de WD desde el norte.
-          angle: lecturas.map(l => (sentido === 'viene' ? l.wd : l.wd + 180)),
+          angle: ls.map(l => (sentido === 'viene' ? l.wd : l.wd + 180)),
           size: tamano,
-          color,
+          ...marcador,
         },
         name: est,
         legendgroup: est,
         showlegend: false,
         hovertemplate:
-          `<b>${est}</b> %{y:.2f} m/s · %{customdata[0]:.0f}° (%{customdata[1]})<extra></extra>`,
+          `<b>${est}</b> %{y:.2f} m/s · %{customdata[0]:.0f}° (%{customdata[1]})`
+          + (colorPor ? ` · ${colorPor} %{customdata[2]}` : '') + '<extra></extra>',
+        ...extra,
       });
-      // Entrada de leyenda como línea de color, como en el script: la flecha
-      // girada de la leyenda confundía más de lo que ayudaba.
-      trazas.push({
-        type: 'scatter', mode: 'lines', x: [null], y: [null],
-        line: { color, width: 3 }, name: est, legendgroup: est, showlegend: true,
-      });
+
+      if (colorPor) {
+        const con = lecturas.filter(l => valorDe(est, l.t) !== null);
+        const sin = lecturas.filter(l => valorDe(est, l.t) === null);
+        trazas.push(flechas(con, { color: con.map(l => valorDe(est, l.t)), coloraxis: 'coloraxis' }));
+        // Sin dato del contaminante en esa hora: gris tenue, para no inventar color.
+        if (sin.length) trazas.push(flechas(sin, { color: 'rgba(148,163,184,0.45)' }));
+      } else {
+        trazas.push(flechas(lecturas, { color }));
+        // Entrada de leyenda como línea de color, como en el script: la flecha
+        // girada de la leyenda confundía más de lo que ayudaba.
+        trazas.push({
+          type: 'scatter', mode: 'lines', x: [null], y: [null],
+          line: { color, width: 3 }, name: est, legendgroup: est, showlegend: true,
+        });
+      }
     });
+
+    // Con color por contaminante, la barra de la escala va a la derecha.
+    const finX = colorPor ? 0.94 : 1;
 
     Plotly.react(ref.current, trazas, {
       height: 560,
@@ -115,12 +196,16 @@ export default function VientoFlechas({ data }: { data: Registro[] }) {
       hovermode: 'x unified',
       plot_bgcolor: 'white',
       paper_bgcolor: 'white',
-      xaxis: { type: 'date', tickformat: '%d %b %y %H:%M', gridcolor: '#eef1f5', rangeslider: { visible: true, thickness: 0.05 } },
+      xaxis: {
+        type: 'date', tickformat: '%d %b %y %H:%M', gridcolor: '#eef1f5',
+        rangeslider: { visible: true, thickness: 0.05 }, domain: [0, finX],
+      },
       yaxis: { title: { text: 'Velocidad del viento (m/s)' }, gridcolor: '#e5e7eb', rangemode: 'tozero' },
-      legend: { title: { text: 'Estación' }, orientation: 'h', y: -0.25, x: 0.5, xanchor: 'center' },
+      legend: { title: { text: colorPor ? '' : 'Estación' }, orientation: 'h', y: -0.25, x: 0.5, xanchor: 'center' },
       uirevision: 'viento',
+      ...layout,
     }, { responsive: true, displaylogo: false });
-  }, [estaciones, elegidas, porEstacion, sentido, tamano, pasoEfectivo]);
+  }, [estaciones, elegidas, porEstacion, filasPorEstacion, sentido, tamano, pasoEfectivo, colorPor]);
 
   useEffect(() => {
     const nodo = ref.current;
@@ -132,8 +217,21 @@ export default function VientoFlechas({ data }: { data: Registro[] }) {
     if (next.has(est)) next.delete(est); else next.add(est);
     return next;
   });
-
   const control = 'px-2 py-1 border border-gray-300 rounded-md text-sm bg-white';
+  // Un boton por opcion; se elige uno a la vez (es el color de las flechas).
+  const opcion = (valor: string, etiqueta: string, hay = true) => {
+    const activo = colorPor === valor;
+    return (
+      <button key={valor || 'estacion'} type="button" disabled={!hay} aria-pressed={activo}
+        onClick={() => setColorPor(valor)}
+        title={!hay ? `${valor}: sin datos en lo cargado` : valor ? getUnitsAndName(valor).name : 'Cada estación con su color'}
+        className={`px-2.5 py-1 rounded-md border text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+          activo ? 'border-slate-800 text-slate-900 font-medium' : 'border-gray-300 text-gray-600 hover:border-gray-500'
+        }`}>
+        {etiqueta}
+      </button>
+    );
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
@@ -168,6 +266,27 @@ export default function VientoFlechas({ data }: { data: Registro[] }) {
                 </label>
               ))}
             </div>
+          </div>
+
+          <div className="rounded-lg border border-gray-200 p-3 space-y-2" role="group" aria-label="Color de las flechas">
+            <div className="text-sm font-medium text-gray-700">
+              Color de las flechas
+              <span className="font-normal text-gray-500"> · cada flecha toma el color de la concentración en esa hora</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">{opcion('', 'Por estación')}</div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-gray-500 w-20">Partículas</span>
+              {PARTICULAS.map(p => opcion(p, p, medidos.has(p)))}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-medium uppercase tracking-wide text-gray-500 w-20">Gases</span>
+              {GASES.map(p => opcion(p, p, medidos.has(p)))}
+            </div>
+            {colorPor && (
+              <p className="text-xs text-gray-500">
+                Amarillo, poco; rojo oscuro, mucho (escala hasta el percentil 98). Gris: sin dato de {colorPor} en esa hora.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-sm text-gray-700">
@@ -205,7 +324,7 @@ export default function VientoFlechas({ data }: { data: Registro[] }) {
             </span>
           </div>
 
-          <div ref={ref} role="img" aria-label="Velocidad y dirección del viento por estación" />
+          <div ref={ref} role="img" aria-label="Velocidad y dirección del viento por estación, con contaminantes" />
         </>
       )}
     </div>

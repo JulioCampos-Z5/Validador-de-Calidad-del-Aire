@@ -64,12 +64,12 @@ func (s *Service) Entrar(ctx context.Context, l Login, ip string) (RespuestaLogi
 	if err != nil {
 		return RespuestaLogin{}, err
 	}
-	expira := inicio.Add(s.emisor.Duracion())
+	expira := inicio.Add(s.emisor.DuracionDe(l.Recordar))
 	token, err := s.emisor.Firmar(auth.Sesion{IDUsuario: u.ID, IDSesion: idSesion, Nombre: u.Nombre, Rol: u.Rol}, expira)
 	if err != nil {
 		return RespuestaLogin{}, err
 	}
-	s.Anotar(ctx, u.ID, "login", map[string]string{"ip": ip})
+	s.Anotar(ctx, u.ID, "login", map[string]any{"ip": ip, "recordar": l.Recordar})
 	return RespuestaLogin{Token: token, Expira: expira, Usuario: *u}, nil
 }
 
@@ -110,6 +110,34 @@ func (s *Service) Crear(ctx context.Context, quien int64, n NuevoUsuario) (*Usua
 	}
 	s.Anotar(ctx, quien, "usuario_creado", map[string]any{"id": id, "correo": n.Correo, "rol": n.Rol})
 	return s.repo.PorID(ctx, id)
+}
+
+// AsegurarInicial crea el usuario principal la primera vez, cuando la base no
+// tiene ninguno: es como entra quien instala la app de escritorio, que no
+// tiene consola de admin a mano. Recibe el hash bcrypt, nunca la contrasena.
+// Con algun usuario ya dado de alta no hace nada (ni lo pisa si se cambio).
+func (s *Service) AsegurarInicial(ctx context.Context, nombre, correo, hash string) error {
+	n, err := s.repo.Contar(ctx)
+	if err != nil || n > 0 {
+		return err
+	}
+	if _, err := bcrypt.Cost([]byte(hash)); err != nil {
+		return fmt.Errorf("el hash del usuario inicial no es bcrypt: %w", err)
+	}
+	nuevo := NuevoUsuario{
+		Nombre: strings.TrimSpace(nombre),
+		Correo: strings.ToLower(strings.TrimSpace(correo)),
+		Rol:    auth.Root,
+	}
+	if _, err := mail.ParseAddress(nuevo.Correo); err != nil || nuevo.Nombre == "" {
+		return fmt.Errorf("%w: usuario inicial", ErrEntrada)
+	}
+	id, err := s.repo.Crear(ctx, nuevo, hash)
+	if err != nil {
+		return err
+	}
+	s.Anotar(ctx, 0, "usuario_inicial", map[string]any{"id": id, "correo": nuevo.Correo, "rol": nuevo.Rol})
+	return nil
 }
 
 func (s *Service) Actualizar(ctx context.Context, quien int64, id int64, c Cambios) (*Usuario, error) {
