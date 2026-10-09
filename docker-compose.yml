@@ -1,10 +1,11 @@
-# Despliegue del Validador en un servidor.
+# Motor de análisis del Validador (Flask) en un servidor.
 #
 #   docker compose up -d --build
 #
-# Queda en http://localhost:8080. Detrás de un proxy (nginx, Traefik), apúntalo
-# al puerto 8000 del contenedor y sirve por HTTPS: la sesión de la API de
-# Emisiones viaja en las peticiones, y en claro cualquiera de la red la ve.
+# Queda en http://localhost:8080. No es lo que abren las personas: la API de Go
+# (api/) sirve el front v2 y le reenvía /api/analisis/*; apunta su
+# VALIDADOR_BACKEND_URL aquí. Expón la API de Go por HTTPS: la sesión de la
+# API de Emisiones viaja en las peticiones.
 
 services:
   validador:
@@ -22,10 +23,10 @@ services:
       TZ: America/Mexico_City
 
     volumes:
-      # Los ejecutables de Windows se compilan fuera —PyInstaller no compila
-      # para otro sistema— y se dejan aquí. Si la carpeta está vacía, la sección
-      # «App de escritorio» simplemente no aparece en el menú.
-      - ./salida:/app/salida:ro
+      # El instalador de Windows se compila fuera —PyInstaller no compila
+      # para otro sistema— y se deja aquí. Si la carpeta está vacía, «Descargar
+      # la app» simplemente no aparece.
+      - ./salida-v2:/app/salida-v2:ro
 
       # Caché de descargas y archivos de trabajo. Sin este volumen se pierde al
       # reiniciar y la primera consulta de cada periodo vuelve a tardar: un

@@ -334,7 +334,7 @@ class VistaPreviaDeValidado(ConCliente):
 class AppDeEscritorio(ConCliente):
     """
     Quien entra por el navegador se lleva el ejecutable desde aqui. Se sirven
-    solo dos nombres conocidos: aceptar el nombre que pida el cliente seria
+    solo un nombre conocido: aceptar el nombre que pida el cliente seria
     servir cualquier archivo del disco del servidor.
     """
 
@@ -351,16 +351,16 @@ class AppDeEscritorio(ConCliente):
         self.assertEqual(datos['archivos'], [])
 
     def test_se_listan_solo_los_que_existen(self):
-        with open(os.path.join(self.carpeta, 'Validador-instalador.exe'), 'wb') as f:
+        with open(os.path.join(self.carpeta, 'Validador-v2-instalador.exe'), 'wb') as f:
             f.write(b'x' * 2048)
 
         datos = self.cliente.get('/api/app-escritorio').get_json()
 
         self.assertTrue(datos['disponible'])
         self.assertEqual([a['nombre'] for a in datos['archivos']],
-                         ['Validador-instalador.exe'])
+                         ['Validador-v2-instalador.exe'])
         self.assertEqual(datos['archivos'][0]['url'],
-                         '/api/app-escritorio/Validador-instalador.exe')
+                         '/api/app-escritorio/Validador-v2-instalador.exe')
 
     def test_un_nombre_de_fuera_no_se_sirve(self):
         """
@@ -374,15 +374,15 @@ class AppDeEscritorio(ConCliente):
         self.assertEqual(r.status_code, 404)
 
     def test_un_nombre_permitido_pero_sin_compilar(self):
-        r = self.cliente.get('/api/app-escritorio/Validador-instalador.exe')
+        r = self.cliente.get('/api/app-escritorio/Validador-v2-instalador.exe')
         self.assertEqual(r.status_code, 404)
         self.assertIn('compilada', r.get_json()['error'])
 
     def test_el_ejecutable_compilado_se_descarga(self):
-        with open(os.path.join(self.carpeta, 'Validador-instalador.exe'), 'wb') as f:
+        with open(os.path.join(self.carpeta, 'Validador-v2-instalador.exe'), 'wb') as f:
             f.write(b'x' * 16)
 
-        r = self.cliente.get('/api/app-escritorio/Validador-instalador.exe')
+        r = self.cliente.get('/api/app-escritorio/Validador-v2-instalador.exe')
         self.assertEqual(r.status_code, 200)
         self.assertIn('attachment', r.headers['Content-Disposition'])
 

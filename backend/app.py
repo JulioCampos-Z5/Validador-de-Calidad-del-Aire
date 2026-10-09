@@ -10,7 +10,6 @@ from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
 import math
 from werkzeug.utils import secure_filename
-from werkzeug.security import safe_join
 import os
 import sys
 import tempfile
@@ -151,15 +150,14 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max
 
 def raiz_recursos() -> str:
     """
-    Carpeta que contiene `frontend/dist` y, si la hay, `salida`.
+    Carpeta que contiene, si la hay, `salida-v2` (el instalador de escritorio).
 
     En desarrollo es la raíz del proyecto, un nivel por encima de `backend/`.
 
     Empaquetado con PyInstaller no sirve `__file__`: apunta dentro del propio
     ejecutable, a una ruta que no existe en el disco. La referencia buena es
     `sys.executable`, que está en `resources/backend-exe/`, y los recursos de la
-    app cuelgan de `resources/`. Sin esto el backend arranca y responde la API,
-    pero devuelve 404 en `/` — la aplicación abre una ventana en blanco.
+    app cuelgan de `resources/`.
     """
     if getattr(sys, 'frozen', False):
         return os.path.dirname(os.path.dirname(os.path.abspath(sys.executable)))
@@ -1191,16 +1189,16 @@ def allowed_file(filename):
 # ---------------------------------------------------------------------------
 # Descarga de la app de escritorio
 #
-# La misma compilación del frontend sirve para web y para escritorio, así que
-# quien entra por el navegador puede llevarse el ejecutable desde aquí. Se
-# sirven solo dos nombres conocidos y nunca lo que pida el cliente: aceptar un
-# nombre de archivo de fuera sería servir cualquier cosa del disco.
+# Quien entra por el navegador puede llevarse la app de escritorio v2 desde
+# aquí (el instalador que deja `pnpm --dir escritorio-v2 exe`). Se sirve solo
+# un nombre conocido y nunca lo que pida el cliente: aceptar un nombre de
+# archivo de fuera sería servir cualquier cosa del disco.
 # ---------------------------------------------------------------------------
 
-CARPETA_SALIDA = os.path.join(RAIZ_RECURSOS, 'salida')
+CARPETA_SALIDA = os.path.join(RAIZ_RECURSOS, 'salida-v2')
 
 APP_ESCRITORIO = {
-    'Validador-instalador.exe': {
+    'Validador-v2-instalador.exe': {
         'etiqueta': 'Instalador',
         'detalle': 'Instala la app y crea acceso directo. Recomendado.',
     },
@@ -1508,35 +1506,6 @@ def preview_validated():
     except Exception as e:
         return jsonify({'error': f'Error al leer archivo validado: {str(e)}'}), 500
 
-
-
-# ============================================================================
-# FRONTEND EMPAQUETADO (app de escritorio)
-# ============================================================================
-# En desarrollo el frontend corre en Vite con un proxy hacia /api. En la app de
-# escritorio no hay Vite, asi que Flask sirve tambien el HTML ya compilado. La
-# ventaja de servirlo desde aqui en vez de abrirlo como file:// es que asi la
-# pagina y la API comparten origen: las llamadas a /api funcionan tal cual y no
-# hay que tocar CORS ni reescribir rutas.
-
-FRONTEND_DIST = os.path.join(RAIZ_RECURSOS, 'frontend', 'dist')
-
-
-@app.route('/', defaults={'ruta': ''})
-@app.route('/<path:ruta>')
-def servir_frontend(ruta):
-    if not os.path.isdir(FRONTEND_DIST):
-        return jsonify({'error': 'Frontend no compilado. Ejecuta: npm --prefix frontend run build'}), 404
-
-    # safe_join devuelve None si la ruta intenta salir de la carpeta («..»,
-    # rutas absolutas, «\» en Windows). Con os.path.join, /../../lo-que-sea
-    # servía cualquier archivo del disco.
-    archivo = safe_join(FRONTEND_DIST, ruta) if ruta else None
-    if archivo and os.path.isfile(archivo):
-        return send_file(archivo)
-    # Cualquier otra ruta devuelve index.html: el enrutado es del lado del
-    # cliente (react-router), asi que /minutales no es un archivo en disco.
-    return send_file(os.path.join(FRONTEND_DIST, 'index.html'))
 
 
 if __name__ == '__main__':

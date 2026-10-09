@@ -60,8 +60,7 @@ publicación no es una serie plana. Esas son las que se rompen al refactorizar.
 
 ## Lo que no cubren
 
-- **El frontend.** No hay pruebas de React; el tipado de TypeScript (`npx tsc
-  --noEmit`) es lo único que hay hoy.
+- **El front.** Tiene sus propias pruebas en `web/` (`pnpm --dir web test`).
 - **La API real.** Las pruebas fijan cómo se interpreta la respuesta, no que el
   servidor siga respondiendo así. Si la API cambia de formato, el parseo falla
   con un mensaje que lista los campos recibidos, y `GET /api/emisiones/muestra`

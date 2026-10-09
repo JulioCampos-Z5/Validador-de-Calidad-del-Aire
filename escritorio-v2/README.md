@@ -1,8 +1,7 @@
 # App de escritorio v2
 
 El validador v2 sin servidor: todo corre en la computadora de quien lo usa.
-Convive con la app de escritorio v1 (`escritorio/`), que sigue con su propio
-instalador.
+Reemplaza a la app de escritorio v1, que se retiró junto con su front.
 
 | Pieza | Qué es | Puerto |
 |---|---|---|

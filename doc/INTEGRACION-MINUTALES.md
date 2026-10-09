@@ -34,7 +34,7 @@ backend/minutales/
 ├── mir.py       Indicador MIR y diagnóstico de fallas
 └── rutas.py     Blueprint /api/minutales
 
-frontend/src/
+web/src/legado/
 ├── services/minutales.ts        Cliente
 ├── components/FuenteSimaj.tsx   Selector de origen (junto al de subir archivo)
 ├── components/TarjetaMir.tsx    Indicador MIR con selección de contaminantes

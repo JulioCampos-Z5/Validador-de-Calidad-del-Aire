@@ -19,19 +19,13 @@ Dependencias del backend:
 pip install -r backend/requirements.txt
 ```
 
-Dependencias del frontend:
+Dependencias del front v2 y de la app de escritorio (pnpm, desde la raíz):
 
 ```bash
-npm --prefix frontend install
+pnpm install
 ```
 
-Dependencias de la app de escritorio:
-
-```bash
-npm --prefix escritorio install
-```
-
-Herramienta para empaquetar el backend (solo si vas a compilar los ejecutables):
+Herramienta para empaquetar el backend (solo si vas a compilar el instalador):
 
 ```bash
 pip install pyinstaller
@@ -41,57 +35,63 @@ pip install pyinstaller
 
 ## Desarrollo
 
-Backend, en el puerto 8000:
+Motor de análisis (Flask), en el puerto 8010 — el que espera la API de Go:
 
 ```bash
-python backend/app.py
+VALIDADOR_PUERTO=8010 python backend/app.py
 ```
 
-Frontend, en el puerto 3000 — en **otra** terminal, con el backend ya corriendo:
+API central en Go, en el puerto 8081 (lee `api/.env`):
 
 ```bash
-npm --prefix frontend run dev
+go -C api run ./cmd/api
 ```
 
-Compilar el frontend para producción:
+Front v2, en el puerto 3100 — en **otra** terminal, con la API ya corriendo:
 
 ```bash
-npm --prefix frontend run build
+pnpm --dir web dev
 ```
 
-Comprobar los tipos de TypeScript sin compilar. `npm exec` no cambia de
-directorio, por eso hay que decirle a `tsc` dónde está el proyecto:
+Compilar el front v2 (comprueba también los tipos):
 
 ```bash
-npm --prefix frontend exec -- tsc -p frontend --noEmit
-```
-
-Revisar el estilo con ESLint:
-
-```bash
-npm --prefix frontend run lint
+pnpm --dir web build
 ```
 
 ---
 
 ## Pruebas
 
-Las 106 pruebas del backend:
+Las del backend:
 
 ```bash
 python -m unittest discover -s backend/pruebas -t backend
-```
-
-Con el nombre de cada una:
-
-```bash
-python -m unittest discover -s backend/pruebas -t backend -v
 ```
 
 Un solo módulo, por ejemplo el de las validaciones:
 
 ```bash
 python -m unittest discover -s backend/pruebas -t backend -p test_validaciones.py
+```
+
+Las del front v2:
+
+```bash
+pnpm --dir web test
+```
+
+Las de la API de Go (inventario y puertos necesitan `PRUEBAS_MYSQL_DSN`, ver
+`api/README.md`):
+
+```bash
+go -C api test ./...
+```
+
+Las de la app de escritorio:
+
+```bash
+pnpm --dir escritorio-v2 test
 ```
 
 ---
@@ -101,30 +101,24 @@ python -m unittest discover -s backend/pruebas -t backend -p test_validaciones.p
 Abrirla sin compilar, usando el Python del sistema:
 
 ```bash
-npm --prefix escritorio run dev
+pnpm --dir escritorio-v2 dev
 ```
 
-Empaquetar solo el backend con PyInstaller:
+Generar el instalador en `salida-v2/` — front, API de Go, motor empaquetado y
+Electron:
 
 ```bash
-npm --prefix escritorio run backend
+pnpm --dir escritorio-v2 exe
 ```
 
-Generar los ejecutables completos en `salida/` — frontend, backend empaquetado y
-Electron, unos 5 minutos:
-
-```bash
-npm --prefix escritorio run exe
-```
-
-> Produce `Validador-instalador.exe`, de unos 97 MB.
-> No hace falta tener Python para usarlos: va dentro.
+> Produce `Validador-v2-instalador.exe`.
+> No hace falta tener Python para usarlo: va dentro.
 
 ---
 
 ## Docker (servidor)
 
-Construir la imagen y levantar, en http://localhost:8080:
+Construir la imagen del motor de análisis y levantarla, en http://localhost:8080:
 
 ```bash
 docker compose up -d --build
@@ -177,18 +171,18 @@ docker compose exec validador bash
 
 ## Publicar en el servidor
 
-Los ejecutables de Windows **no se generan en el servidor**: PyInstaller no
-compila para otro sistema. Se compilan en Windows y se copian a `salida/`, que
+El instalador de Windows **no se genera en el servidor**: PyInstaller no
+compila para otro sistema. Se compila en Windows y se copia a `salida-v2/`, que
 el contenedor monta.
 
 Copiarlo al servidor (ajusta usuario, servidor y ruta):
 
 ```bash
-scp salida/Validador-instalador.exe usuario@servidor:/ruta/al/proyecto/salida/
+scp salida-v2/Validador-v2-instalador.exe usuario@servidor:/ruta/al/proyecto/salida-v2/
 ```
 
 No hace falta reiniciar nada: el backend lee la carpeta en cada consulta. Si
-está vacía, la sección «App de escritorio» simplemente no aparece en el menú.
+está vacía, «Descargar la app» simplemente no aparece.
 
 ---
 
@@ -197,7 +191,7 @@ está vacía, la sección «App de escritorio» simplemente no aparece en el men
 ¿Responde el backend?
 
 ```bash
-curl http://localhost:8000/api/health
+curl http://localhost:8010/api/health
 ```
 
 ¿Responde el contenedor?
@@ -209,25 +203,25 @@ curl http://localhost:8080/api/health
 Ver la configuración que está usando — rangos, banderas y estaciones:
 
 ```bash
-curl http://localhost:8000/api/config
+curl http://localhost:8010/api/config
 ```
 
 ¿Hay sesión abierta en la API de Emisiones?
 
 ```bash
-curl http://localhost:8000/api/emisiones/sesion
+curl http://localhost:8010/api/emisiones/sesion
 ```
 
-¿Qué ejecutables ve el servidor para ofrecer en descarga?
+¿Ve el servidor el instalador para ofrecerlo en descarga?
 
 ```bash
-curl http://localhost:8000/api/app-escritorio
+curl http://localhost:8010/api/app-escritorio
 ```
 
 Ver los últimos errores del servidor sin abrir la interfaz:
 
 ```bash
-curl "http://localhost:8000/api/registros?limite=20"
+curl "http://localhost:8010/api/registros?limite=20"
 ```
 
 Vaciarlos antes de reproducir un fallo:
@@ -240,7 +234,7 @@ Ver la respuesta cruda de la API de Emisiones, para diagnosticar un cambio de
 formato — requiere sesión abierta:
 
 ```bash
-curl "http://localhost:8000/api/emisiones/muestra?horas=1&limite=1"
+curl "http://localhost:8010/api/emisiones/muestra?horas=1&limite=1"
 ```
 
 ---
@@ -275,7 +269,7 @@ rm -rf ~/.validador-calidad-aire
 Borrar lo que dejan PyInstaller y electron-builder:
 
 ```bash
-rm -rf backend/build backend/dist salida/win-unpacked
+rm -rf backend/build backend/dist salida-v2/win-unpacked
 ```
 
 ---

@@ -17,7 +17,6 @@ Los ataques
   nombre de archivo, para leer o descargar cualquier archivo del disco. En
   Windows `\\` también separa carpetas, y el conversor `<filename>` de Flask
   solo filtra `/`.
-- Lo mismo contra la ruta que sirve el frontend compilado.
 - Leer las respuestas de la API desde otro sitio web (CORS).
 """
 
@@ -104,37 +103,6 @@ class DescargaDeResultados(BaseSeguridad):
             r.close()
         finally:
             os.remove(ruta)
-
-
-class FrontendCompilado(BaseSeguridad):
-    def setUp(self):
-        super().setUp()
-        self.dist_original = modulo_app.FRONTEND_DIST
-        self.dist = tempfile.mkdtemp(prefix='pruebas_dist_')
-        with open(os.path.join(self.dist, 'index.html'), 'w', encoding='utf-8') as f:
-            f.write('<html>indice</html>')
-        modulo_app.FRONTEND_DIST = self.dist
-
-    def tearDown(self):
-        modulo_app.FRONTEND_DIST = self.dist_original
-        shutil.rmtree(self.dist, ignore_errors=True)
-        super().tearDown()
-
-    def test_no_sale_de_la_carpeta_del_frontend(self):
-        relativa = os.path.relpath(self.secreto, self.dist).replace(os.sep, '/')
-        for url in ('/' + relativa,
-                    '/' + relativa.replace('../', '..%2F'),
-                    '/' + relativa.replace('/', '%5C')):
-            with self.subTest(url=url):
-                r = self.cliente.get(url)
-                self.assertNotIn(b'CONTENIDO-SECRETO', r.data)
-                r.close()
-
-    def test_una_ruta_del_cliente_devuelve_el_indice(self):
-        r = self.cliente.get('/minutales')
-        self.assertEqual(r.status_code, 200)
-        self.assertIn(b'indice', r.data)
-        r.close()
 
 
 class Subidas(BaseSeguridad):

@@ -7,14 +7,15 @@
 # Se instalan y compilan dentro; copiarlos sería llevarse los binarios de
 # Windows a una imagen Linux.
 **/node_modules
-frontend/dist
+web/
+api/
 
 # Ejecutables de Windows y artefactos de PyInstaller: se generan fuera y se
 # montan como volumen si se quieren ofrecer para descarga.
-salida/
+salida-v2/
 backend/build/
 backend/dist/
-escritorio/
+escritorio-v2/
 
 # Documentación y documentos de referencia: útiles en el repositorio, peso
 # muerto en la imagen (los PDF solos son 7 MB).

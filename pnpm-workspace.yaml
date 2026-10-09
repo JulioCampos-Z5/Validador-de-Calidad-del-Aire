@@ -1,6 +1,4 @@
 packages:
-  - frontend
-  - escritorio
   - escritorio-v2
   - web
 

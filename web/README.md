@@ -1,14 +1,14 @@
 # Front v2 del Validador
 
 Shell con barra de iconos y **un iframe por módulo**. Diseño y decisiones en
-[doc/ARQUITECTURA-v2.md](../doc/ARQUITECTURA-v2.md) (sección 9). Convive con el
-`frontend/` actual hasta que lo reemplace módulo por módulo.
+[doc/ARQUITECTURA-v2.md](../doc/ARQUITECTURA-v2.md) (sección 9). Es el único front
+del validador: el `frontend/` de la v1 se retiró.
 
 | Módulo | Qué hace | Necesita en la API |
 |---|---|---|
 | Shell | Login, menú por rol, tema claro/oscuro, cerrar sesión | `usuarios` |
 | Tablero | Resumen: red, datos cargados, inventario, últimos avisos | lo que esté activo |
-| Validación | Todo lo del tablero del frontend actual: orígenes (archivo ENVISTA, archivo ya validado, SIMAJ, API de Emisiones, base local en escritorio), periodo con calendario, configuración de validaciones, aviso de descarga incompleta, vista previa de datos, estadísticas, exportaciones (validación, MIR, IAS/NOM diario y horario), descarga de la app | `validacion` (Flask) |
+| Validación | Todo lo del tablero de la v1: orígenes (archivo ENVISTA, archivo ya validado, SIMAJ, API de Emisiones, base local en escritorio), periodo con calendario, configuración de validaciones, aviso de descarga incompleta, vista previa de datos, estadísticas, exportaciones (validación, MIR, IAS/NOM diario y horario), descarga de la app | `validacion` (Flask) |
 | Gráficas | Las 7 vistas: series, comportamiento horario, distribución, calendario, categorías NOM-172, día × hora, viento. Fuente: la red (lo cargado en Validación) o Ambient Weather (promedios horarios en unidades de la red; sin categorías ni día × hora) | `validacion` (y `ambientweather` para esa fuente) |
 | Registros | Pestañas: MIR y fallas (indicador MIR, fallas por canal, errores del servidor), MIDE y MIDE por municipio (las hojas del Excel diario) | `validacion` |
 | Parámetros | Rangos, estaciones y banderas del backend | `validacion` |
@@ -33,7 +33,7 @@ pnpm --dir web build      # deja web/dist/
 
 ## Pruebas
 
-`pnpm --dir web test` corre todo el front v2 (no el `frontend/` anterior): shell,
+`pnpm --dir web test` corre todo el front v2: shell,
 módulos propios, las páginas de `legado/` con sus gráficas (Plotly simulado),
 servicios HTTP (axios con un adaptador falso), el estado compartido y el
 arranque de cada `m/<modulo>/index.html` con el puente al shell simulado.
@@ -70,10 +70,10 @@ web/
   IndexedDB para sobrevivir una recarga y se borra al cerrar sesión.
 - Un módulo puede abrir otro con `ir('graficas')` (mensaje `ir` al shell).
 
-## Código traído del frontend actual (`src/legado/`)
+## Código traído del front de la v1 (`src/legado/`)
 
-Validación, Gráficas, Registros y Parámetros usan el código del `frontend/`
-actual casi sin cambios (unas 9,000 líneas con reglas del área técnica ya
+Validación, Gráficas, Registros y Parámetros usan el código del front de la
+v1 (ya retirado) casi sin cambios (unas 9,000 líneas con reglas del área técnica ya
 probadas). Solo se adaptó en puntos únicos:
 
 - `legado/sesion.ts`: axios va a `/api/analisis/*` con la sesión; los enlaces

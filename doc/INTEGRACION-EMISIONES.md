@@ -44,7 +44,7 @@ backend/emisiones/
 ├── almacen.py   Sesión guardada en disco, opcional
 └── rutas.py     Blueprint /api/emisiones
 
-frontend/src/
+web/src/legado/
 ├── services/emisiones.ts          Cliente
 └── components/PanelEmisiones.tsx  Acceso y consulta
 ```

@@ -2,10 +2,8 @@
 Rutas de recursos del backend.
 
 Empaquetado con PyInstaller, `__file__` apunta dentro del ejecutable, a una
-ruta que no existe en el disco. Esta prueba fija la diferencia porque el fallo
-que provoca es de los que no se ven venir: la API responde perfectamente y solo
-`/` devuelve 404, así que la app de escritorio abre una ventana en blanco sin
-un solo error en ningún log.
+ruta que no existe en el disco. Esta prueba fija la diferencia: con la raíz
+equivocada la descarga de la app de escritorio no encuentra su instalador.
 """
 
 import os
@@ -23,7 +21,7 @@ class RaizDeRecursos(unittest.TestCase):
     def test_en_desarrollo_sube_desde_el_codigo(self):
         raiz = app.raiz_recursos()
         self.assertTrue(os.path.isdir(os.path.join(raiz, 'backend')))
-        self.assertTrue(os.path.isdir(os.path.join(raiz, 'frontend')))
+        self.assertTrue(os.path.isdir(os.path.join(raiz, 'web')))
 
     def test_empaquetado_sube_desde_el_ejecutable(self):
         """

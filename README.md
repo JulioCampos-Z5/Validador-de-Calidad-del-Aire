@@ -50,36 +50,29 @@ fácil, y entonces dejan de ser comparables.
 
 ### Aplicación de escritorio (lo normal para usarla)
 
-Descarga `Validador-instalador.exe` desde el menú
-lateral de la web, o compílalos:
+Descarga `Validador-v2-instalador.exe` desde «Descargar la app» en Validación,
+o compílalo:
 
 ```bash
-cd escritorio
-npm install
-pip install pyinstaller     # solo para compilar
-npm run exe                 # deja los ejecutables en ../salida/
+pnpm --dir escritorio-v2 exe   # deja el instalador en salida-v2/
 ```
 
-Windows 64 bits. **No requiere Python**: el intérprete y las librerías van
-empaquetados dentro.
+Windows 64 bits. **No requiere Python**: el motor de análisis, la API de Go y
+el front van empaquetados dentro. Ver [escritorio-v2/README.md](escritorio-v2/README.md).
 
-### En un servidor (Docker)
+### En un servidor
+
+Tres piezas: la API de Go (`api/`, sirve también `web/dist`), el motor de
+análisis en Python (este `Dockerfile`) y MySQL. Ver [api/README.md](api/README.md)
+y [doc/ARQUITECTURA-v2.md](doc/ARQUITECTURA-v2.md).
 
 ```bash
-docker compose up -d --build
+docker compose up -d --build   # el motor de análisis en :8080
 ```
 
-Queda en http://localhost:8080. La imagen lleva el backend y el frontend ya
-compilado; Flask sirve los dos, así que no hace falta nginx delante para
-funcionar —aunque sí conviene uno con **HTTPS**: la sesión de la API de
-Emisiones viaja en las peticiones.
-
-Tres cosas que conviene saber:
-
-- **Los `.exe` de Windows no se generan ahí.** PyInstaller no compila para otro
-  sistema. Se compilan aparte y se dejan en `salida/`, que el contenedor monta:
-  si la carpeta tiene los ejecutables, la sección «App de escritorio» aparece en
-  el menú; si está vacía, se oculta sola.
+- **El instalador de Windows no se genera ahí.** Se compila aparte y se deja en
+  `salida-v2/`, que el contenedor monta: si está, «Descargar la app» aparece;
+  si no, se oculta sola.
 - **Un solo worker de gunicorn**, y no es un descuido: el backend guarda estado
   en variables de módulo —el token, el último periodo descargado, el progreso—.
   Con varios workers, cada uno tendría su propia copia y la sesión parpadearía
@@ -90,12 +83,12 @@ Tres cosas que conviene saber:
 ### En desarrollo
 
 ```bash
-cd backend && pip install -r requirements.txt && python app.py   # puerto 8000
-cd frontend && npm install && npm run dev                        # puerto 3000
+cd backend && pip install -r requirements.txt && python app.py   # motor de análisis
+go -C api run ./cmd/api                                          # API central, :8081
+pnpm --dir web dev                                               # front v2, :3100
 ```
 
-Requisitos: Python 3.10+ y Node 18+. El frontend habla con el backend por un
-proxy configurado en Vite, así que basta con abrir el puerto 3000.
+Ver [web/README.md](web/README.md) y [api/README.md](api/README.md).
 
 ### Pruebas
 
@@ -269,17 +262,13 @@ backend/            API Flask; toda la lógica de validación vive en app.py
 ├── pruebas/        306 pruebas con unittest
 └── validador-backend.spec   Empaquetado con PyInstaller
 
-frontend/           React + TypeScript + Vite + Tailwind
-├── components/     Menú de datos, calendario de periodo, tablas y gráficas
-├── estado/         Conjunto de datos y configuración compartidos
-├── services/       Clientes de la API
-└── pages/          Tablero, Gráficas, Parámetros y Registros
-
-escritorio/         Electron: arranca el backend y abre la ventana
-salida/             Ejecutables compilados (no versionado)
+api/                API central en Go: usuarios, puertos, inventario, Ambient Weather
+web/                Front v2: shell y un iframe por módulo (React + Vite)
+escritorio-v2/      App de escritorio (Electron): API de Go + motor de Python + front
+salida-v2/          Instalador compilado (no versionado)
 doc/                Documentación y documentos de referencia
-Dockerfile          Imagen para servidor: frontend compilado + backend
-docker-compose.yml  Despliegue con volúmenes para caché, sesión y ejecutables
+Dockerfile          Imagen para servidor del motor de análisis (Flask)
+docker-compose.yml  Despliegue con volúmenes para caché, sesión e instalador
 ```
 
 ---
