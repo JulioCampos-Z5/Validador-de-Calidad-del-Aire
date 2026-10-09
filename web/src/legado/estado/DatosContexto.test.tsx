@@ -13,6 +13,8 @@ vi.mock('../services/api', () => ({ default: apiService, apiService }))
 vi.mock('../services/minutales', async (original) => ({ ...(await original<object>()), minutalesApi }))
 vi.mock('../services/emisiones', () => ({ emisionesApi }))
 vi.mock('../services/historico', () => ({ historicoApi }))
+const archivosApi = vi.hoisted(() => ({ abrir: vi.fn() }))
+vi.mock('../services/archivos', () => ({ archivosApi }))
 
 import {
   DatosProvider, diasDelPeriodo, rangoConsultable, useDatos, type EstadoCompartido,
@@ -77,6 +79,28 @@ describe('DatosProvider', () => {
     expect(config).toMatchObject({ rangos: true, series_presion: false })
     expect(revalidar).toBe(true)
     expect(result.current.exito).toMatch(/Base local: 5 datos nuevos, 2 cambios pendientes/)
+  })
+
+  it('un archivo guardado se abre con el mismo flujo que uno subido', async () => {
+    archivosApi.abrir.mockResolvedValueOnce({ filename: 'w_BD.xlsx', tipo: 'validado', nombre: 'BD_2026.xlsx' })
+      .mockResolvedValueOnce({ filename: 'w_Trs.csv', tipo: 'envista', nombre: 'Trs.csv' })
+    apiService.previewValidated.mockResolvedValue(respuesta())
+    apiService.validateFull.mockResolvedValue(respuesta())
+    const { result } = montar()
+    let ok = false
+    await act(async () => { ok = await result.current.cargarGuardado('BD_2026.xlsx') })
+    expect(ok).toBe(true)
+    expect(apiService.uploadFile).not.toHaveBeenCalled()
+    expect(apiService.previewValidated).toHaveBeenCalledWith('w_BD.xlsx', expect.any(Array))
+    expect(result.current.descripcion).toBe('BD_2026.xlsx')
+    await act(async () => { await result.current.cargarGuardado('Trs.csv') })
+    expect(apiService.validateFull.mock.calls[0][0]).toBe('w_Trs.csv')
+    expect(result.current.origen).toBe('envista')
+
+    archivosApi.abrir.mockRejectedValue({ response: { data: { error: 'Ese archivo no está guardado.' } } })
+    await act(async () => { ok = await result.current.cargarGuardado('x.xlsx') })
+    expect(ok).toBe(false)
+    expect(result.current.error).toBe('Ese archivo no está guardado.')
   })
 
   it('el error del backend se muestra tal cual', async () => {

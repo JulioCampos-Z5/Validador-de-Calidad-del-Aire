@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { IconArrowRight } from '@tabler/icons-react'
 import { modulos as pedirModulos } from '../../compartido/api'
+import { disponible, visiblesPara } from '../../compartido/modulos'
+import { esEscritorio } from '../../compartido/escritorio'
 import type { PropsModulo } from '../../compartido/modulo'
 import type { EstadoEstacion, EventoPuerto } from '../../compartido/tipos'
 import { fechaHora } from '../../compartido/tiempo'
@@ -22,10 +24,18 @@ export function Tablero({ api, usuario, datos, ir }: PropsModulo) {
   const [red, setRed] = useState<EstadoEstacion[] | null>(null)
   const [eventos, setEventos] = useState<EventoPuerto[]>([])
   const [equipos, setEquipos] = useState<Equipo[] | null>(null)
+  const [escritorio, setEscritorio] = useState(false)
 
   useEffect(() => {
     pedirModulos().then((r) => setActivos(new Set(r.modulos.filter((m) => m.estado === 'activo').map((m) => m.nombre)))).catch(() => setActivos(new Set()))
   }, [])
+
+  useEffect(() => {
+    if (!activos?.has('validacion')) return
+    let vivo = true
+    esEscritorio(api, { vivo: () => vivo }).then((e) => vivo && setEscritorio(e))
+    return () => { vivo = false }
+  }, [activos, api])
 
   useEffect(() => {
     if (!activos) return
@@ -48,6 +58,8 @@ export function Tablero({ api, usuario, datos, ir }: PropsModulo) {
   const bien = red ? red.length - red.filter((e) => e.sinComunicacion || e.puertos.some((p) => p.estado === 'caido')).length : 0
 
   const r = datos?.respuesta
+  // Accesos a las vistas: las que ve este rol, menos el propio Tablero.
+  const accesos = visiblesPara(usuario.rol, escritorio).filter((m) => m.id !== 'tablero')
 
   return (
     <div className="pagina">
@@ -115,6 +127,24 @@ export function Tablero({ api, usuario, datos, ir }: PropsModulo) {
           </Bloque>
         )}
       </div>
+
+      <section className="seccion" aria-labelledby="accesos-titulo">
+        <h2 id="accesos-titulo" className="subtitulo">Ir a</h2>
+        <div className="accesos">
+          {accesos.map((m) => {
+            const ok = activos !== null && disponible(m, activos)
+            const Ico = m.icono
+            return (
+              <button key={m.id} type="button" className="acceso" disabled={!ok}
+                onClick={() => ir(m.id)} title={ok ? m.nombre : `${m.nombre} · en proceso`}>
+                <Ico size={20} stroke={1.7} aria-hidden="true" />
+                <span>{m.nombre}</span>
+                {!ok && activos !== null && <span className="cap">En proceso</span>}
+              </button>
+            )
+          })}
+        </div>
+      </section>
     </div>
   )
 }

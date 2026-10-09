@@ -52,6 +52,7 @@ test('el motor de Python va en su puerto, con UTF-8', () => {
   assert.equal(e.VALIDADOR_HOST, '127.0.0.1');
   assert.equal(e.PYTHONUTF8, '1');
   assert.match(e.VALIDADOR_HISTORICO, /historico\.sqlite$/);
+  assert.match(e.VALIDADOR_ARCHIVOS, /archivos$/);
 });
 
 test('las llaves del instalador llenan las vacías y no pisan las escritas', () => {

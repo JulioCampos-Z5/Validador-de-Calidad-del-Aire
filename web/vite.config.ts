@@ -72,6 +72,7 @@ export default defineConfig({
         registros: resolve(__dirname, 'm/registros/index.html'),
         parametros: resolve(__dirname, 'm/parametros/index.html'),
         ambientweather: resolve(__dirname, 'm/ambientweather/index.html'),
+        archivos: resolve(__dirname, 'm/archivos/index.html'),
       },
     },
   },

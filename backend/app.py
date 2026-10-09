@@ -109,6 +109,10 @@ app.register_blueprint(bp_historico)
 from ias.rutas import bp as bp_ias
 app.register_blueprint(bp_ias)
 
+# Archivos importados guardados para volver a consultarlos (solo escritorio).
+from archivos.rutas import bp as bp_archivos, guardar_subido as guardar_archivo_subido
+app.register_blueprint(bp_archivos)
+
 import ultimo
 from minutales.mir import calcular_mir, diagnostico_fallas
 
@@ -321,8 +325,8 @@ def detectar_formato_archivo(filepath):
                 pass
             return 'envista_raw', None
 
-        xl = pd.ExcelFile(filepath)
-        sheets_lower = {s.lower(): s for s in xl.sheet_names}
+        with pd.ExcelFile(filepath) as xl:
+            sheets_lower = {s.lower(): s for s in xl.sheet_names}
         if 'data' in sheets_lower or 'datos_validados' in sheets_lower:
             return 'bd_procesado', sheets_lower.get('data') or sheets_lower.get('datos_validados')
         return 'envista_raw', None
@@ -1322,11 +1326,14 @@ def upload_file():
         filename = f"{timestamp}_{filename}"
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        
+        # En la app de escritorio, una copia en «Archivos» para volver a abrirlo.
+        guardado = guardar_archivo_subido(filepath, file.filename)
+
         return jsonify({
             'message': 'Archivo subido exitosamente',
             'filename': filename,
-            'filepath': filepath
+            'filepath': filepath,
+            'guardado': guardado,
         })
     
     return jsonify({'error': 'Tipo de archivo no permitido. Use .xlsx, .xls o .csv'}), 400

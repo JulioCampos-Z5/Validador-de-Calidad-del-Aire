@@ -11,6 +11,7 @@ del validador: el `frontend/` de la v1 se retiró.
 | Validación | Todo lo del tablero de la v1: orígenes (archivo ENVISTA, archivo ya validado, SIMAJ, API de Emisiones, base local en escritorio), periodo con calendario, configuración de validaciones, aviso de descarga incompleta, vista previa de datos, estadísticas, exportaciones (validación, MIR, IAS/NOM diario y horario), descarga de la app | `validacion` (Flask) |
 | Gráficas | Las 7 vistas: series, comportamiento horario, distribución, calendario, categorías NOM-172, día × hora, viento. Fuente: la red (lo cargado en Validación) o Ambient Weather (promedios horarios en unidades de la red; sin categorías ni día × hora) | `validacion` (y `ambientweather` para esa fuente) |
 | Registros | Pestañas: MIR y fallas (indicador MIR, fallas por canal, errores del servidor), MIDE y MIDE por municipio (las hojas del Excel diario) | `validacion` |
+| Archivos | Solo escritorio: los Excel/CSV importados, con vista previa, abrir en el validador y borrar | `validacion` (Flask, `VALIDADOR_ARCHIVOS`) |
 | Parámetros | Rangos, estaciones y banderas del backend | `validacion` |
 | Estaciones | Mosaico en vivo de puertos, detalle y avisos | `puertos` |
 | Ambient Weather | Estaciones meteorológicas de la cuenta: última lectura, gráfica por métrica y periodo (y comparando estaciones), tabla, CSV y descarga de histórico (admin). Unidades métricas | `ambientweather` |

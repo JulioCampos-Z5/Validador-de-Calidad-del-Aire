@@ -4,6 +4,7 @@ import apiService, { type ValidationResponse } from '../services/api';
 import { minutalesApi, CONTAMINANTES_CRITERIO, type Mir, type Falla, type Progreso } from '../services/minutales';
 import { emisionesApi, type SesionEmisiones } from '../services/emisiones';
 import { historicoApi } from '../services/historico';
+import { archivosApi } from '../services/archivos';
 
 /**
  * Estado compartido del conjunto de datos cargado.
@@ -105,6 +106,8 @@ interface Estado {
   setRevalidar: Dispatch<SetStateAction<boolean>>;
   setError: Dispatch<SetStateAction<string | null>>;
   cargarArchivo: (archivo: File, origen: OrigenArchivo) => Promise<void>;
+  /** Un archivo guardado en la app de escritorio (módulo Archivos). */
+  cargarGuardado: (nombre: string) => Promise<boolean>;
   // Aceptan el periodo explicito porque quien las llama acaba de elegirlo: si
   // se dejara leer del estado, la primera descarga tras cambiar las fechas se
   // haria con las anteriores. Ver la nota en `cargarSimaj`.
@@ -298,6 +301,30 @@ export function DatosProvider({ children, inicial, alCambiar }: {
     setExito(null);
   }, []);
 
+  // Un archivo ya en la carpeta de trabajo del backend: se valida (o, si ya
+  // viene validado, solo se abre) y queda como el conjunto actual.
+  const procesar = useCallback(async (filename: string, modo: OrigenArchivo, nombre: string) => {
+    const r = modo === 'validado'
+      ? await apiService.previewValidated(filename, contaminantesMir)
+      : await apiService.validateFull(filename, configBackend(), revalidar, contaminantesMir);
+
+    setResultado(r);
+    // El MIR de un archivo se calcula igual que el del SIMAJ: las horas
+    // esperadas salen de las fechas de cada estación (ver minutales/mir.py).
+    setMir(r.mir ?? null);
+    setFallas(r.fallas ?? []);
+    setComoCeroMir([]);
+    setOrigen(modo);
+    setDescripcion(nombre);
+    // En la app de escritorio lo importado se guarda solo en la base local.
+    const local = r.historico;
+    const guardado = !local ? ''
+      : local.error ? ` ${local.error}`
+        : ` Base local: ${(local.nuevos ?? 0).toLocaleString()} datos nuevos` +
+          (local.pendientes ? `, ${local.pendientes.toLocaleString()} cambios pendientes de revisar` : '') + '.';
+    setExito(`${r.summary.total_registros.toLocaleString()} registros de ${nombre}.${guardado}`);
+  }, [configBackend, revalidar, contaminantesMir]);
+
   const cargarArchivo = useCallback(async (archivo: File, modo: OrigenArchivo) => {
     setCargando(true);
     setError(null);
@@ -305,32 +332,32 @@ export function DatosProvider({ children, inicial, alCambiar }: {
     setExito(null);
     try {
       const subida = await apiService.uploadFile(archivo);
-      const r = modo === 'validado'
-        ? await apiService.previewValidated(subida.filename, contaminantesMir)
-        : await apiService.validateFull(subida.filename, configBackend(), revalidar, contaminantesMir);
-
-      setResultado(r);
-      // El MIR de un archivo se calcula igual que el del SIMAJ: las horas
-      // esperadas salen de las fechas de cada estación (ver minutales/mir.py).
-      setMir(r.mir ?? null);
-      setFallas(r.fallas ?? []);
-      setComoCeroMir([]);
-      setOrigen(modo);
-      setDescripcion(archivo.name);
-      // En la app de escritorio lo importado se guarda solo en la base local.
-      const local = r.historico;
-      const guardado = !local ? ''
-        : local.error ? ` ${local.error}`
-          : ` Base local: ${(local.nuevos ?? 0).toLocaleString()} datos nuevos` +
-            (local.pendientes ? `, ${local.pendientes.toLocaleString()} cambios pendientes de revisar` : '') + '.';
-      setExito(`${r.summary.total_registros.toLocaleString()} registros de ${archivo.name}.${guardado}`);
+      await procesar(subida.filename, modo, archivo.name);
     } catch (e) {
       const detalle = (e as { response?: { data?: { error?: string } } }).response?.data?.error;
       setError(detalle ?? 'Error al procesar el archivo.');
     } finally {
       setCargando(false);
     }
-  }, [configBackend, revalidar, contaminantesMir]);
+  }, [procesar]);
+
+  const cargarGuardado = useCallback(async (nombre: string) => {
+    setCargando(true);
+    setError(null);
+    setAdvertencia(null);
+    setExito(null);
+    try {
+      const abierto = await archivosApi.abrir(nombre);
+      await procesar(abierto.filename, abierto.tipo === 'validado' ? 'validado' : 'envista', nombre);
+      return true;
+    } catch (e) {
+      const detalle = (e as { response?: { data?: { error?: string } } }).response?.data?.error;
+      setError(detalle ?? 'No se pudo abrir el archivo guardado.');
+      return false;
+    } finally {
+      setCargando(false);
+    }
+  }, [procesar]);
 
   /**
    * Descarga del SIMAJ.
@@ -503,14 +530,14 @@ export function DatosProvider({ children, inicial, alCambiar }: {
     cargando, error, exito, revalidar, config, sesionEmisiones, periodo,
     progresoSimaj,
     setConfig, setRevalidar, setError, setPeriodo,
-    cargarArchivo, cargarSimaj, cargarEmisiones, cargarHistorico, historicoDisponible,
+    cargarArchivo, cargarGuardado, cargarSimaj, cargarEmisiones, cargarHistorico, historicoDisponible,
     entrarEmisiones, salirEmisiones, cambiarContaminantesMir, comoCeroMir, alternarCeroMir, limpiar,
     advertencia, descartarAdvertencia, reintentarDescarga,
   }), [
     resultado, mir, fallas, contaminantesMir, origen, descripcion,
     cargando, error, exito, revalidar, config, sesionEmisiones, periodo,
     progresoSimaj,
-    cargarArchivo, cargarSimaj, cargarEmisiones, cargarHistorico, historicoDisponible,
+    cargarArchivo, cargarGuardado, cargarSimaj, cargarEmisiones, cargarHistorico, historicoDisponible,
     entrarEmisiones, salirEmisiones, cambiarContaminantesMir, comoCeroMir, alternarCeroMir, limpiar,
     advertencia, descartarAdvertencia, reintentarDescarga,
   ]);

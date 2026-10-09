@@ -4,8 +4,10 @@ import { cliente, modulos as pedirModulos } from '../compartido/api'
 import { aplicarTema, enviar, escucharModulo } from '../compartido/puente'
 import type { Conjunto, Sesion, Tema, Usuario } from '../compartido/tipos'
 import { Login } from './Login'
-import { MODULOS, disponible, type ModuloFront } from './modulos'
+import { disponible, visiblesPara, type ModuloFront } from './modulos'
 import { borrarConjunto, guardarConjunto, leerConjunto } from './almacen'
+import { esEscritorio } from '../compartido/escritorio'
+import { precargar } from './precarga'
 import { guardarSesion, guardarTema, leerSesion, leerTema } from './preferencias'
 
 const NOMBRE_ROL: Record<string, string> = { root: 'Root', admin: 'Administrador', tecnico: 'Técnico', user: 'Usuario' }
@@ -58,8 +60,10 @@ function Escritorio({ sesion, tema, cambiarTema, salir }: {
     leerConjunto().then((c) => { setDatos((d) => d ?? c); setDatosListos(true) })
   }, [])
 
+  // En la app de escritorio hay modulos propios (Archivos) y precarga.
+  const [escritorio, setEscritorio] = useState(false)
   const rol = sesion.usuario.rol
-  const visibles = useMemo(() => MODULOS.filter((m) => !m.roles || m.roles.includes(rol)), [rol])
+  const visibles = useMemo(() => visiblesPara(rol, escritorio), [rol, escritorio])
   // Sin modulo en la direccion se abre Estaciones; si esa no esta (la app de
   // escritorio no la lleva), el primero disponible en cuanto se sabe cuales hay.
   const sinElegir = useRef(!location.hash.slice(1))
@@ -78,6 +82,36 @@ function Escritorio({ sesion, tema, cambiarTema, salir }: {
   useEffect(() => {
     api.get<Usuario>('/api/auth/yo').catch(() => {})
   }, [api])
+
+  useEffect(() => {
+    if (!activos?.has('validacion')) return
+    let vivo = true
+    esEscritorio(api, { vivo: () => vivo }).then((e) => vivo && setEscritorio(e))
+    return () => { vivo = false }
+  }, [activos, api])
+
+  // Precarga (solo escritorio): sin nada cargado —o con una precarga de una
+  // sesion anterior—, lo que va del año de la base local. Ver precarga.ts.
+  const datosRef = useRef<Conjunto | null>(null)
+  datosRef.current = datos
+  const propio = useRef<Conjunto | null>(null)
+  useEffect(() => {
+    if (!escritorio || !datosListos) return
+    const vigente = () => {
+      const d = datosRef.current
+      return d === null || d === propio.current || d.origen.startsWith('Base local · lo que va de')
+    }
+    if (!vigente()) return
+    return precargar(api, (c) => {
+      propio.current = c
+      setDatos(c)
+      guardarConjunto(c)
+      const destino = marco.current?.contentWindow
+      if (destino) enviar(destino, { tipo: 'datos', datos: c })
+    }, vigente)
+    // Una vez por sesion de la ventana: no al cambiar de datos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [escritorio, datosListos, api])
 
   useEffect(() => {
     pedirModulos()

@@ -52,3 +52,15 @@
 @media (max-width: 520px) {
   .pagina { padding: 16px; }
 }
+
+/* Accesos a las vistas (Tablero): un boton por modulo. */
+.accesos { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.acceso { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px 16px; min-height: 84px;
+  background: var(--panel); border: 1px solid var(--linea); border-radius: 14px; color: var(--tx); font: inherit;
+  font-size: 13.5px; font-weight: 600; text-align: left; cursor: pointer; transition: border-color .15s, background .15s; }
+.acceso svg { color: var(--tx2); }
+.acceso:hover:not(:disabled) { border-color: var(--tx3); background: var(--suave); }
+.acceso:focus-visible { outline: 2px solid var(--tx2); outline-offset: 2px; }
+.acceso:disabled { color: var(--tx3); cursor: default; }
+.acceso:disabled svg { color: var(--tx3); }
+.acceso .cap { font-weight: 400; margin-top: -4px; }

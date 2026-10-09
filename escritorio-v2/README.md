@@ -38,6 +38,8 @@ En `%APPDATA%\validador-escritorio-v2\datos` (menú **Datos → Abrir la
 carpeta de datos**). La comparten la app instalada y `pnpm dev`:
 
 - `usuarios.sqlite`, `ambient_weather.sqlite`, `historico.sqlite`
+- `archivos/`: copia de cada Excel o CSV importado; se consultan y se vuelven a abrir
+  desde el módulo **Archivos**
 - `config.env`: llave de sesión (se genera sola) y las llaves de Ambient
   Weather. Menú **Datos → Configuración**; después de editarlo, cierra y
   vuelve a abrir la app.
@@ -49,6 +51,14 @@ El instalador ya las trae: al compilar, `preparar-llaves.mjs` las toma de
 `config.env` que estén vacías; una llave escrita a mano no se pisa. Ni
 `api/.env` ni `build/` se suben a git, pero quien tenga el instalador puede
 extraerlas: si se comparte fuera del laboratorio, regenéralas.
+
+### Al abrir: lo que va del año
+
+Sin nada cargado, la app trae de la base local lo que va del año (el Tablero
+lo muestra como «Base local · lo que va de 2026»). Si hay sesión con la API de
+Emisiones —o credenciales en `config.env`—, en segundo plano baja los días que
+falten desde el último guardado y, al terminar, recarga con lo nuevo. Si ya
+habías cargado otra cosa, no la pisa.
 
 ### API de Emisiones
 

@@ -52,8 +52,6 @@ def cargar():
     No se vuelve a validar: lo guardado ya pasó por las validaciones cuando se
     cargó, y sus banderas son justo lo que se quiere recuperar.
     """
-    from app import crear_resumen_validacion, mir_de_archivo
-
     ruta = _ruta()
     if not ruta:
         return jsonify(NO_DISPONIBLE), 404
@@ -66,22 +64,35 @@ def cargar():
         return jsonify({'error': f'La base local cubre desde {almacen.FECHA_MINIMA}.'}), 400
 
     try:
-        with closing(almacen.conectar(ruta)) as con:
-            df = almacen.cargar_periodo(con, desde, hasta)
+        respuesta = _periodo(ruta, desde, hasta, cuerpo.get('contaminantes'))
     except Exception as e:
         registros.anotar_error('Histórico: falló la lectura del periodo', e)
         return jsonify({'error': f'No se pudo leer la base local: {e}'}), 500
-    if df.empty:
+    if respuesta is None:
         return jsonify({'error': 'La base local no tiene datos guardados en ese periodo.'}), 404
+    return jsonify(respuesta)
+
+
+def _periodo(ruta: str, desde: str, hasta: str, contaminantes=None) -> dict | None:
+    """
+    Un periodo de la base local como conjunto de trabajo (misma forma que
+    /api/validate/full), o None si no hay nada guardado en él.
+    """
+    from app import crear_resumen_validacion, mir_de_archivo
+
+    with closing(almacen.conectar(ruta)) as con:
+        df = almacen.cargar_periodo(con, desde, hasta)
+    if df.empty:
+        return None
 
     # Lo guardado ya está validado: el MIR cuenta sus banderas de lectura.
-    mir, fallas = mir_de_archivo(df, validado=True, contaminantes=cuerpo.get('contaminantes'),
+    mir, fallas = mir_de_archivo(df, validado=True, contaminantes=contaminantes,
                                  origen='historico')
     ultimo.guardar_validado(df, 'historico', 'Base local')
     resumen_banderas, _detallado, estadisticas, stats_detalladas = crear_resumen_validacion(df)
 
     # Sin Excel: con más de un año tardaba minutos y rozaba el límite de filas.
-    return jsonify({
+    return {
         'success': True,
         'message': 'Periodo cargado de la base local',
         'output_filename': None,
@@ -100,7 +111,7 @@ def cargar():
                                     if not stats_detalladas.empty else []),
         'mir': mir,
         'fallas': fallas,
-    })
+    }
 
 
 @bp.route('/serie', methods=['GET'])
@@ -249,15 +260,69 @@ def descargar():
     if hasta <= desde:
         return jsonify({'error': f'La base local cubre desde {almacen.FECHA_MINIMA}.'}), 400
 
+    _iniciar_descarga(ruta, _sesion['token'], desde, hasta, cuerpo.get('config'))
+    return jsonify(_descarga)
+
+
+def _iniciar_descarga(ruta: str, token: str, desde: str, hasta: str, config: dict | None) -> None:
     tramos = almacen.meses(desde, hasta)
     _cancelar.clear()
     _descarga.clear()
     _descarga.update({'activo': True, 'desde': desde, 'hasta': hasta, 'total': len(tramos),
                      'hechos': 0, 'mes': None, 'nuevos': 0, 'pendientes': 0,
                      'fallidos': [], 'vacios': [], 'error': None, 'mensaje': None})
-    threading.Thread(target=_descargar_meses, args=(ruta, _sesion['token'], tramos, cuerpo.get('config')),
-                     daemon=True).start()
-    return jsonify(_descarga)
+    threading.Thread(target=_descargar_meses, args=(ruta, token, tramos, config), daemon=True).start()
+
+
+# ── Precarga de la app de escritorio ─────────────────────────────────────────
+#
+# Al abrir la app, lo que va del año sale de la base local al instante. Si hay
+# sesión con la API de Emisiones (o credenciales en config.env, ver
+# emisiones/rutas.py), en segundo plano se bajan los días que falten desde el
+# último guardado; la interfaz sigue el avance en GET /descargar y vuelve a
+# pedir la precarga (sin completar) cuando termina.
+
+def _ultimo_dia_guardado(ruta: str, desde: str) -> str | None:
+    with closing(almacen.conectar(ruta)) as con:
+        fila = con.execute('SELECT MAX(fecha) FROM mediciones WHERE fecha >= ?', (desde,)).fetchone()
+    return fila[0][:10] if fila and fila[0] else None
+
+
+@bp.route('/precarga', methods=['POST'])
+def precarga():
+    """{completar?: bool, contaminantes?} — lo que va del año, y completar con Emisiones."""
+    import horario
+    from emisiones.rutas import _asegurar_sesion, _sesion
+
+    ruta = _ruta()
+    if not ruta:
+        return jsonify(NO_DISPONIBLE), 404
+    cuerpo = request.get_json(silent=True) or {}
+    anio = horario.ahora().year
+    desde, hasta = almacen.acotar(f'{anio}-01-01', f'{anio + 1}-01-01')
+
+    completando, motivo = False, None
+    if cuerpo.get('completar', True):
+        if _descarga.get('activo'):
+            completando = True
+        elif not _asegurar_sesion():
+            motivo = 'sin_sesion'
+        else:
+            # El último día guardado se vuelve a pedir: pudo quedar a medias.
+            inicio = _ultimo_dia_guardado(ruta, desde) or desde
+            if inicio < hasta:
+                _iniciar_descarga(ruta, _sesion['token'], inicio, hasta, cuerpo.get('config'))
+                completando = True
+
+    try:
+        respuesta = _periodo(ruta, desde, hasta, cuerpo.get('contaminantes'))
+    except Exception as e:
+        registros.anotar_error('Histórico: falló la precarga', e)
+        return jsonify({'error': f'No se pudo leer la base local: {e}'}), 500
+    info = {'anio': anio, 'desde': desde, 'hasta': hasta, 'completando': completando, 'motivo': motivo}
+    if respuesta is None:
+        return jsonify({'vacio': True, 'precarga': info})
+    return jsonify({**respuesta, 'precarga': info})
 
 
 @bp.route('/descargar', methods=['GET'])

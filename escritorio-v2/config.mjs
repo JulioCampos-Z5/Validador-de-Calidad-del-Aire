@@ -175,6 +175,8 @@ export function entornoMotor({ base, carpetaDatos, archivoConfig = null }) {
     VALIDADOR_SIN_RECARGA: '1',
     // La base local (histórico para comparar años) es propia de esta app.
     VALIDADOR_HISTORICO: join(carpetaDatos, 'historico.sqlite'),
+    // Copia de cada Excel/CSV importado, para volver a abrirlo (módulo Archivos).
+    VALIDADOR_ARCHIVOS: join(carpetaDatos, 'archivos'),
     // Por tubería Python escribe en cp1252 y los acentos llegaban rotos a la bitácora.
     PYTHONIOENCODING: 'utf-8',
     PYTHONUTF8: '1',

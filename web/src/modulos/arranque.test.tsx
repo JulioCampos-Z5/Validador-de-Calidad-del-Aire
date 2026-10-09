@@ -87,6 +87,7 @@ describe('arranque de cada modulo', () => {
     ['ambientweather', /Todavía no hay estaciones/],
     ['inventario', /Inventario/],
     ['admin', /Administración/],
+    ['archivos', /Archivos|app de escritorio/],
   ]
   for (const [modulo, texto] of casos) {
     it(`${modulo}: pinta al recibir la sesion`, async () => {

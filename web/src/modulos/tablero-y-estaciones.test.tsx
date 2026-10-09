@@ -84,6 +84,20 @@ describe('Tablero', () => {
     expect(p.ir).toHaveBeenCalledWith('graficas')
   })
 
+  it('accesos a las vistas: segun el rol, los en proceso deshabilitados', async () => {
+    modulosActivos(['validacion', 'ambientweather'])
+    const p = props(cliente({}).cliente, { usuario: { id: 2, nombre: 'Ana', correo: 'a@x.mx', rol: 'user', estatus: 'activo' } })
+    render(<Tablero {...p} />)
+    const ir = within(screen.getByRole('region', { name: 'Ir a' }))
+    await waitFor(() => expect(ir.getByRole('button', { name: /^Gráficas/ })).toBeEnabled())
+    expect(ir.queryByRole('button', { name: /^Tablero/ })).not.toBeInTheDocument() // ya estoy aqui
+    expect(ir.queryByRole('button', { name: /^Admin/ })).not.toBeInTheDocument() // solo root y admin
+    expect(ir.getByRole('button', { name: /^Inventario/ })).toBeDisabled()
+    expect(ir.getByRole('button', { name: /^Inventario/ })).toHaveTextContent('En proceso')
+    await userEvent.click(ir.getByRole('button', { name: /^Ambient Weather/ }))
+    expect(p.ir).toHaveBeenCalledWith('ambientweather')
+  })
+
   it('sin el analisis conectado lo dice', async () => {
     modulosActivos([])
     render(<Tablero {...props(cliente({}).cliente)} />)

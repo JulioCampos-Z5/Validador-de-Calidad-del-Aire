@@ -33,6 +33,7 @@ let ias: typeof import('./ias').iasApi
 let minutales: typeof import('./minutales').minutalesApi
 let emisiones: typeof import('./emisiones').emisionesApi
 let historico: typeof import('./historico')
+let archivos: typeof import('./archivos').archivosApi
 
 beforeAll(async () => {
   sesion = await import('../sesion')
@@ -41,6 +42,7 @@ beforeAll(async () => {
   minutales = (await import('./minutales')).minutalesApi
   emisiones = (await import('./emisiones')).emisionesApi
   historico = await import('./historico')
+  archivos = (await import('./archivos')).archivosApi
 })
 
 beforeEach(() => {
@@ -155,6 +157,24 @@ describe('servicios', () => {
     expect(pedidos.at(-1)?.url).toBe('/api/analisis/historico/cargas/7/cambios')
     expect(historico.mensajeError({ response: { data: { error: 'falló' } } }, 'genérico')).toBe('falló')
     expect(historico.mensajeError(new Error('x'), 'genérico')).toBe('genérico')
+  })
+})
+
+describe('archivos guardados', () => {
+  it('rutas con el nombre codificado', async () => {
+    sesion.configurarSesion('t', vi.fn())
+    responder = () => ({ datos: { disponible: true, archivos: [] } })
+    await archivos.listar()
+    await archivos.vista('BD 2026 (2).xlsx', 'Data')
+    await archivos.vista('a.csv')
+    await archivos.abrir('BD 2026 (2).xlsx')
+    await archivos.borrar('a.csv')
+    expect(pedidos.map((p) => `${p.metodo} ${p.url}`)).toEqual([
+      'GET /api/analisis/archivos', 'GET /api/analisis/archivos/BD%202026%20(2).xlsx/vista',
+      'GET /api/analisis/archivos/a.csv/vista', 'POST /api/analisis/archivos/BD%202026%20(2).xlsx/abrir',
+      'DELETE /api/analisis/archivos/a.csv',
+    ])
+    expect(pedidos[1].params).toEqual({ hoja: 'Data' })
   })
 })
 

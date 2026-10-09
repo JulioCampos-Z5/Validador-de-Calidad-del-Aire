@@ -172,6 +172,31 @@ describe('Shell', () => {
     expect(await screen.findByRole('button', { name: 'Entrar' })).toBeInTheDocument()
   })
 
+  it('en escritorio: Archivos en el menu y precarga de lo que va del año', async () => {
+    const precarga = vi.fn(() => Response.json({
+      summary: { total_registros: 500, estaciones: 13 }, data_preview: [], mir: null, fallas: [],
+      precarga: { anio: 2026, desde: '2026-01-01', hasta: '2026-10-10', completando: false, motivo: 'sin_sesion' },
+    }))
+    api({
+      '/api/analisis/historico/estado': () => Response.json({ disponible: true }),
+      '/api/analisis/historico/precarga': precarga,
+    })
+    guardarSesion(sesion())
+    render(<Shell />)
+    expect(await screen.findByRole('button', { name: 'Archivos' })).toBeInTheDocument()
+    await waitFor(async () => expect((await leerConjunto())?.origen).toBe('Base local · lo que va de 2026'))
+    expect(precarga).toHaveBeenCalledTimes(1)
+  })
+
+  it('en la web no hay Archivos ni precarga', async () => {
+    const fetch = api()
+    guardarSesion(sesion())
+    render(<Shell />)
+    await screen.findByRole('button', { name: 'Gráficas' })
+    expect(screen.queryByRole('button', { name: /Archivos/ })).not.toBeInTheDocument()
+    expect(fetch.mock.calls.some(([r]) => String(r).includes('precarga'))).toBe(false)
+  })
+
   it('la API caida se dice', async () => {
     api({ '/api/modulos': () => { throw new TypeError('Failed to fetch') } })
     guardarSesion(sesion())
